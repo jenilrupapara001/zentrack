@@ -55,6 +55,7 @@ export const downloadEmailLogTxt = () =>
   api.get('/email/log/download', { responseType: 'blob' });
 export const downloadEmailLogExcel = () =>
   api.get('/email/log/excel', { responseType: 'blob' });
+export const verifySmtpConnection = (data) => api.post('/email/verify', data);
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 export const getSmtpCredentials = () => api.get('/settings/smtp');

@@ -27,21 +27,46 @@ export default function LogsReporting() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isLive, setIsLive] = useState(true);
   const { refreshKey } = useRefresh();
+  const [lastFetched, setLastFetched] = useState(new Date());
 
   useEffect(() => {
     fetchLogs();
-  }, [refreshKey]);
+    
+    // Polling logic for "real-time" updates
+    let interval;
+    if (isLive) {
+      interval = setInterval(() => {
+        pollLogs();
+      }, 3000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [refreshKey, isLive]);
 
   const fetchLogs = async () => {
     setLoading(true);
     try {
       const res = await getEmailLogs();
       setLogs(res.data.data || []);
+      setLastFetched(new Date());
     } catch {
       toast.error('Failed to retrieve intelligence audit');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const pollLogs = async () => {
+    try {
+      const res = await getEmailLogs();
+      setLogs(res.data.data || []);
+      setLastFetched(new Date());
+    } catch (err) {
+      console.error('Polling error:', err);
     }
   };
 
@@ -116,6 +141,19 @@ export default function LogsReporting() {
                   <option>Success</option>
                   <option>Failed</option>
                 </select>
+             </div>
+             <div className="h-6 w-px bg-slate-200" />
+             <div className="flex items-center gap-3 pr-2">
+                <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`} />
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">
+                  {isLive ? 'Live Monitoring' : 'Monitoring Paused'}
+                </span>
+                <button 
+                  onClick={() => setIsLive(!isLive)}
+                  className="text-[10px] font-bold text-primary-600 hover:text-primary-700 underline underline-offset-4"
+                >
+                  {isLive ? 'Pause' : 'Resume'}
+                </button>
              </div>
           </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Mail,
@@ -26,12 +26,14 @@ import {
   downloadEmailLogTxt,
   downloadEmailLogExcel,
   triggerDownload,
-  getSessionById
+  getSessionById,
+  verifySmtpConnection
 } from '../services/api';
 import { useRefresh } from '../context/RefreshContext';
 
 export default function EmailSender({ matchedResults: propResults }) {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const sessionId = searchParams.get('sessionId');
   const { refreshKey } = useRefresh();
 
@@ -72,22 +74,38 @@ export default function EmailSender({ matchedResults: propResults }) {
   };
 
   const handleSendBatch = async () => {
-    if (!selectedSmtpId) return toast.error('Select a sending identity');
+    // If no SMTP selected, we'll try to use the system default (env)
+    // if (!selectedSmtpId) return toast.error('Select a sending identity'); 
+    
     if (!activeResults.length) return toast.error('No results to broadcast');
     if (!window.confirm(`ZenTrack will now broadcast ${activeResults.length} reconciliation emails. Proceed?`)) return;
 
     setSending(true);
     const toastId = toast.loading('Establishing Secure SMTP Handshake...');
     try {
-      const res = await sendEmails({
+      // 1. Verify Connection First
+      await verifySmtpConnection({
+        smtpId: selectedSmtpId
+      });
+      
+      toast.success('Secure Handshake Established', { id: toastId });
+      
+      // 2. Start broadcast (don't await it if we want immediate redirection)
+      sendEmails({
         smtpId: selectedSmtpId,
         matchedResults: activeResults
+      }).catch(err => {
+        console.error('Background transmission error:', err);
+        toast.error('A critical error occurred during background transmission.');
       });
-      setSessionData(prev => ({ ...prev, results: res.data.data }));
-      toast.success('Broadcast Complete', { id: toastId });
+
+      // 3. Redirect to logs to see realtime progress
+      setTimeout(() => {
+        navigate('/logs');
+      }, 1500);
+
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Transmission error', { id: toastId });
-    } finally {
+      toast.error(err.response?.data?.message || 'Handshake failed. Check credentials.', { id: toastId });
       setSending(false);
     }
   };

@@ -143,8 +143,26 @@ function randomDelay(minMs = 1000, maxMs = 5000) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Verify connection to SMTP server
+ */
+async function verifyConnection(gmailUser, appPassword) {
+  try {
+    if (!gmailUser || !appPassword) {
+      throw new Error('Missing credentials for verification');
+    }
+    const t = getTransporter(gmailUser, appPassword);
+    await t.verify();
+    return { success: true };
+  } catch (error) {
+    console.error('SMTP Verification failed:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   sendEmail,
   sendEmailWithRetry,
   randomDelay,
+  verifyConnection,
 };

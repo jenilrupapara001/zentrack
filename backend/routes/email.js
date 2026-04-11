@@ -4,7 +4,7 @@ const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const { PartyEmail, EmailLog, SmtpCredential } = require('../models');
 const { generateEmailBody } = require('../services/emailGenerator');
-const { sendEmailWithRetry, randomDelay } = require('../services/smtpSender');
+const { sendEmailWithRetry, randomDelay, verifyConnection } = require('../services/smtpSender');
 
 // GET /api/email/logs — get all email logs
 router.get('/logs', requireAuth, async (req, res) => {
@@ -16,18 +16,57 @@ router.get('/logs', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/email/send — send all matched emails
-router.post('/send', requireAuth, async (req, res) => {
+// POST /api/email/verify — verify SMTP connection
+router.post('/verify', requireAuth, async (req, res) => {
   try {
-    let { gmailUser, gmailPassword, smtpId, matchedResults } = req.body;
+    let { gmailUser, gmailPassword, smtpId } = req.body;
 
-    // If smtpId is provided, fetch credentials from database
+    // Use env vars if nothing provided
+    if (!smtpId && !gmailUser && !gmailPassword) {
+      gmailUser = process.env.GMAIL_USER;
+      gmailPassword = process.env.GMAIL_PASS;
+    }
+
     if (smtpId && (!gmailUser || !gmailPassword)) {
       const cred = await SmtpCredential.findById(smtpId);
       if (cred) {
         gmailUser = cred.user;
         gmailPassword = cred.pass;
       }
+    }
+
+    const result = await verifyConnection(gmailUser, gmailPassword);
+    if (!result.success) {
+      return res.status(403).json({ success: false, message: result.error || 'Connection failed' });
+    }
+
+    res.json({ success: true, message: 'SMTP Handshake Successful' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/email/send — send all matched emails
+router.post('/send', requireAuth, async (req, res) => {
+  try {
+    let { gmailUser, gmailPassword, smtpId, matchedResults } = req.body;
+
+    // Resolve credentials priority:
+    // 1. Provided smtpId (stored profile)
+    // 2. Provided direct gmailUser/Pass (manual override)
+    // 3. Environment Variables (system default)
+    
+    if (smtpId && (!gmailUser || !gmailPassword)) {
+      const cred = await SmtpCredential.findById(smtpId);
+      if (cred) {
+        gmailUser = cred.user;
+        gmailPassword = cred.pass;
+      }
+    }
+
+    if (!gmailUser || !gmailPassword) {
+      gmailUser = process.env.GMAIL_USER;
+      gmailPassword = process.env.GMAIL_PASS;
     }
 
     if (!gmailUser || !gmailPassword) {
