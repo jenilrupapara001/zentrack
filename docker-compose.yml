@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Local MongoDB node (for offline development)
   mongo:
     image: mongo:7
     container_name: pr-mongo
@@ -12,6 +13,7 @@ services:
     environment:
       MONGO_INITDB_DATABASE: payment_reconciliation
 
+  # Global Backend Platform
   backend:
     build:
       context: ./backend
@@ -19,17 +21,22 @@ services:
     container_name: pr-backend
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      # Adjusted to match the High-Fidelity ZenTrack port (5002)
+      - "5002:5002"
     environment:
-      PORT: 5000
-      MONGODB_URI: mongodb+srv://jenil:jenilpatel@aiap.sedzp3h.mongodb.net/payment_reconciliation?retryWrites=true&w=majority&appName=payment_reconciliation
-      SESSION_SECRET: change-me-to-a-long-random-string
-      ADMIN_PASSWORD: Password
-      EMAIL_UPLOAD_PASSWORD: Payment Mail Sender Dashboard
+      # Use 5002 inside and outside for consistency
+      PORT: 5002
+      # Priority 1: Use your production Atlas URI (Current configuration)
+      # Priority 2: Use local 'mongo' service during cluster testing
+      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://jenil:jenilpatel@aiap.sedzp3h.mongodb.net/payment_reconciliation?retryWrites=true&w=majority&appName=payment_reconciliation}
+      SESSION_SECRET: ${SESSION_SECRET:-enterprise-reconciliation-vault-key}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       CLIENT_URL: https://zentrack-alpha.vercel.app
     depends_on:
       - mongo
 
+  # Public-Facing Portal
   frontend:
     build:
       context: ./frontend
@@ -39,7 +46,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: https://zentrack-pkos.onrender.com
+      # Point to the Production API Console
+      VITE_API_BASE_URL: https://zentrack-pkos.onrender.com/api
     depends_on:
       - backend
 
