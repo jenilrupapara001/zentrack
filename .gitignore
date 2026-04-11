@@ -1,2 +1,32 @@
-/{backend
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+
+# Production
+dist/
+build/
 .vercel
+out/
+
+# IDE / System
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.bak
+*.tmp
+
+# App specific
+backend/node_modules/
+frontend/node_modules/
+backend/FinalEmailLog*.txt
+backend/FinalEmailLog*.xlsx

@@ -17,7 +17,8 @@ import {
   Plus,
   Users,
   Eye,
-  EyeOff
+  EyeOff,
+  Globe
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { 
