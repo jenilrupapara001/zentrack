@@ -294,6 +294,8 @@ export default function SettingsPage() {
                         </div>
                         <a 
                           href={`${window.location.origin.includes('localhost') ? 'http://localhost:5001' : ''}/api/auth/google`}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className="btn-primary bg-blue-600 hover:bg-blue-700 border-none shadow-md shadow-blue-100 flex items-center gap-2"
                         >
                           <Lock size={16} />

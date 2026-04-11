@@ -77,10 +77,23 @@ router.get('/google/callback', async (req, res) => {
     }
 
     res.send(`
-      <div style="font-family: sans-serif; text-align: center; padding: 50px;">
-        <h1 style="color: #10b981;">Gmail Connected Successfully!</h1>
-        <p>You can now close this window and refresh the dashboard.</p>
-        ${!tokens.refresh_token ? '<p style="color: #f59e0b;">Warning: Refresh token not received. If this is a reconnect, you may need to revoke access in Google Account settings first.</p>' : ''}
+      <div style="font-family: sans-serif; text-align: center; padding: 100px 20px; background: #f8fafc; min-height: 100vh;">
+        <div style="max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 24px; shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+          <div style="color: #10b981; font-size: 48px; margin-bottom: 20px;">✓</div>
+          <h1 style="color: #0f172a; margin-bottom: 16px;">Gmail Connected!</h1>
+          <p style="color: #64748b; margin-bottom: 32px; line-height: 1.6;">Your identity has been verified. ZenTrack is now authorized to send high-volume reconciliation emails from your account.</p>
+          
+          ${!tokens.refresh_token ? `
+            <div style="background: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 16px; border-radius: 12px; margin-bottom: 32px; font-size: 14px; text-align: left;">
+              <strong>Note:</strong> Refresh token not received. If this is a reconnect, you may need to revoke access in your Google Account settings first.
+            </div>
+          ` : ''}
+
+          <div style="display: flex; gap: 12px; justify-content: center;">
+            <button onclick="window.close()" style="background: #0f172a; color: white; border: none; padding: 12px 24px; border-radius: 12px; font-weight: bold; cursor: pointer;">Close This Window</button>
+            <a href="${process.env.CLIENT_URL}" style="text-decoration: none; background: #2563eb; color: white; padding: 12px 24px; border-radius: 12px; font-weight: bold;">Go to Dashboard</a>
+          </div>
+        </div>
       </div>
     `);
   } catch (err) {
