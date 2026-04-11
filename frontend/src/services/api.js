@@ -1,10 +1,31 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
+/**
+ * SMART DISCOVERY PROTOCOL
+ * -------------------------
+ * ZenTrack automatically detects its deployment coordinate to ensure 
+ * high-fidelity connectivity even if environment variables are missing.
+ */
+const getBaseURL = () => {
+  // 1. Priority: Environment Variable (Vercel/Render Build Time)
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
 
-// Diagnostic log for production handshake debugging
-if (import.meta.env.DEV) {
-  console.log('🚀 ZenTrack API initialized at:', baseURL);
+  // 2. Fallback: Operational Auto-Discovery (Domain Awareness)
+  if (typeof window !== 'undefined' && window.location.hostname === 'zentrack-alpha.vercel.app') {
+    return 'https://zentrack-pkos.onrender.com/api';
+  }
+
+  // 3. Default: Local Development Bridge
+  return '/api';
+};
+
+const baseURL = getBaseURL();
+
+// Diagnostic telemetry for production handshake
+if (import.meta.env.DEV || (typeof window !== 'undefined' && window.location.search.includes('debug=true'))) {
+  console.log('🚀 ZenTrack API Handshake:', baseURL);
 }
 
 const api = axios.create({
