@@ -26,9 +26,9 @@ services:
     environment:
       # Use 5002 inside and outside for consistency
       PORT: 5002
-      # Priority 1: Use your production Atlas URI (Current configuration)
+      # Priority 1: Use your production Atlas URI (Loaded via shell/env)
       # Priority 2: Use local 'mongo' service during cluster testing
-      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://jenil:jenilpatel@aiap.sedzp3h.mongodb.net/payment_reconciliation?retryWrites=true&w=majority&appName=payment_reconciliation}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/payment_reconciliation}
       SESSION_SECRET: ${SESSION_SECRET:-enterprise-reconciliation-vault-key}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}

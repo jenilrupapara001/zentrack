@@ -1,7 +1,14 @@
 import axios from 'axios';
 
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
+
+// Diagnostic log for production handshake debugging
+if (import.meta.env.DEV) {
+  console.log('🚀 ZenTrack API initialized at:', baseURL);
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: baseURL.endsWith('/') ? baseURL.slice(0, -1) : baseURL,
   withCredentials: true,
 });
 
