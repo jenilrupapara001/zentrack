@@ -14,14 +14,27 @@ let transporter;
 function getTransporter(gmailUser, appPassword) {
   if (transporter) return transporter;
 
+  const authConfig = {};
+
+  // Check for Google OAuth2 credentials
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN) {
+    console.log('📬 Using Google OAuth2 Transport');
+    authConfig.type = 'OAuth2';
+    authConfig.user = gmailUser || process.env.GMAIL_USER;
+    authConfig.clientId = process.env.GOOGLE_CLIENT_ID;
+    authConfig.clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    authConfig.refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  } else {
+    console.log('📧 Using Standard SMTP Transport');
+    authConfig.user = gmailUser;
+    authConfig.pass = appPassword;
+  }
+
   transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
-    auth: {
-      user: gmailUser,
-      pass: appPassword,
-    },
+    auth: authConfig,
     pool: true, // ✅ connection pooling
     maxConnections: 5,
     maxMessages: 100,

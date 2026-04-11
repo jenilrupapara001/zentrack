@@ -279,6 +279,32 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="p-6 space-y-4">
+                    {/* Google OAuth Section */}
+                    <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-4 mb-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="p-2.5 bg-white border border-blue-100 rounded-lg text-blue-600 shadow-sm">
+                            <Globe size={20} />
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-slate-900">Google Cloud (Gmail API)</div>
+                            <div className="text-[10px] text-blue-500 font-bold uppercase tracking-widest">Enterprise-grade secure connection</div>
+                          </div>
+                        </div>
+                        <a 
+                          href={`${window.location.origin.includes('localhost') ? 'http://localhost:5001' : ''}/api/auth/google`}
+                          className="btn-primary bg-blue-600 hover:bg-blue-700 border-none shadow-md shadow-blue-100 flex items-center gap-2"
+                        >
+                          <Lock size={16} />
+                          Connect Gmail Account
+                        </a>
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Using the Gmail API is recommended for high-volume dispatch. It provides better deliverability and more robust security than standard SMTP.
+                      </p>
+                    </div>
+
+                    <div className="h-px w-full bg-slate-100 my-6" />
                     {showAdd && (
                       <form onSubmit={handleAdd} className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 animate-in zoom-in-95 duration-200">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
