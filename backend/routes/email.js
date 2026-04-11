@@ -2,7 +2,7 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { PartyEmail, EmailLog } = require('../models');
+const { PartyEmail, EmailLog, SmtpCredential } = require('../models');
 const { generateEmailBody } = require('../services/emailGenerator');
 const { sendEmailWithRetry, randomDelay } = require('../services/smtpSender');
 
@@ -19,7 +19,16 @@ router.get('/logs', requireAuth, async (req, res) => {
 // POST /api/email/send — send all matched emails
 router.post('/send', requireAuth, async (req, res) => {
   try {
-    const { gmailUser, gmailPassword, matchedResults } = req.body;
+    let { gmailUser, gmailPassword, smtpId, matchedResults } = req.body;
+
+    // If smtpId is provided, fetch credentials from database
+    if (smtpId && (!gmailUser || !gmailPassword)) {
+      const cred = await SmtpCredential.findById(smtpId);
+      if (cred) {
+        gmailUser = cred.user;
+        gmailPassword = cred.pass;
+      }
+    }
 
     if (!gmailUser || !gmailPassword) {
       return res.status(400).json({ success: false, message: 'Gmail credentials required' });

@@ -26,7 +26,11 @@ export default function GmailSettings({
     setProgress({ status: 'sending', message: 'Sending emails… (this may take a few minutes due to SMTP throttling)' });
 
     try {
-      const res = await sendEmails(gmailUser, gmailPassword, matchedResults);
+      const res = await sendEmails({
+        gmailUser,
+        gmailPassword,
+        matchedResults
+      });
       const data = res.data.data;
       setProgress({
         status: 'done',
