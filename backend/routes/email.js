@@ -4,14 +4,7 @@ const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const { PartyEmail, EmailLog } = require('../models');
 const { generateEmailBody } = require('../services/emailGenerator');
-const { sendEmail, randomDelay } = require('../services/smtpSender');
-
-// Shared session reference from reconciliation route
-// In production, use Redis or DB; here we re-require to share the closure
-let reconciliationRoute;
-try {
-  reconciliationRoute = require('./reconciliation');
-} catch {}
+const { sendEmailWithRetry, randomDelay } = require('../services/smtpSender');
 
 // GET /api/email/logs — get all email logs
 router.get('/logs', requireAuth, async (req, res) => {
@@ -26,23 +19,10 @@ router.get('/logs', requireAuth, async (req, res) => {
 // POST /api/email/send — send all matched emails
 router.post('/send', requireAuth, async (req, res) => {
   try {
-    const { smtpId, gmailUser: providedUser, gmailPassword: providedPass, matchedResults } = req.body;
-    
-    let gmailUser = providedUser;
-    let gmailPassword = providedPass;
-
-    // If smtpId is provided, fetch credentials from database
-    if (smtpId) {
-      const { SmtpCredential } = require('../models');
-      const cred = await SmtpCredential.findById(smtpId);
-      if (cred) {
-        gmailUser = cred.user;
-        gmailPassword = cred.pass;
-      }
-    }
+    const { gmailUser, gmailPassword, matchedResults } = req.body;
 
     if (!gmailUser || !gmailPassword) {
-      return res.status(400).json({ success: false, message: 'SMTP credentials required. Please select an account or provide credentials.' });
+      return res.status(400).json({ success: false, message: 'Gmail credentials required' });
     }
     if (!matchedResults || !Array.isArray(matchedResults) || !matchedResults.length) {
       return res.status(400).json({ success: false, message: 'No matched results to send' });
@@ -55,46 +35,26 @@ router.post('/send', requireAuth, async (req, res) => {
     let failedCount = 0;
     const results = [];
 
-    // SMTP Transporter Lifecycle Management
-    const { createTransporter } = require('../services/smtpSender');
-    let transporterConfig = { user: gmailUser, pass: gmailPassword };
-    
-    // Fetch extended config if smtpId was used
-    if (smtpId) {
-      const { SmtpCredential } = require('../models');
-      const cred = await SmtpCredential.findById(smtpId);
-      if (cred) {
-        transporterConfig = {
-          user: cred.user,
-          pass: cred.pass,
-          host: cred.host,
-          port: cred.port,
-          secure: cred.secure
-        };
-      }
-    }
+    for (const entry of matchedResults) {
+      const partyCode = entry.partyCode;
+      const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode);
+      const partyName = partyEmailRecord?.partyName || partyCode || 'Unknown Party';
+      const ccStr = partyEmailRecord?.cc || '';
+      const ccEmails = ccStr ? ccStr.split(',').map(e => e.trim()).filter(Boolean) : [];
 
-    const transporter = createTransporter(transporterConfig);
+      const htmlBody = generateEmailBody(partyCode, entry.payments, entry.debits, partyEmails);
 
-    try {
-      for (const entry of matchedResults) {
-        const partyCode = entry.partyCode;
-        const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode);
-        const partyName = partyEmailRecord?.partyName || partyCode || 'Unknown Party';
-        const ccStr = partyEmailRecord?.cc || '';
-        const ccEmails = ccStr ? ccStr.split(',').map(e => e.trim()).filter(Boolean) : [];
+      try {
+        const result = await sendEmailWithRetry(
+          gmailUser,
+          gmailPassword,
+          entry.emails,
+          `Payment Reconciliation for ${partyCode} - ${partyName}`,
+          htmlBody,
+          ccEmails
+        );
 
-        const htmlBody = generateEmailBody(partyCode, entry.payments, entry.debits, partyEmails);
-
-        try {
-          await sendEmail(
-            transporter,
-            entry.emails,
-            `Payment Reconciliation for ${partyCode} - ${partyName}`,
-            htmlBody,
-            ccEmails
-          );
-
+        if (result.success) {
           logLines.push(`Party Code: ${partyCode} | Party Name: ${partyName} | Emails: ${entry.emails.join(', ')} | CC: ${ccEmails.join(', ')}`);
           sentCount++;
           results.push({ partyCode, partyName, status: 'sent', emails: entry.emails });
@@ -107,27 +67,26 @@ router.post('/send', requireAuth, async (req, res) => {
             emails: entry.emails,
             cc: ccEmails,
           });
-        } catch (err) {
-          logLines.push(`FAILED: ${partyCode} | Error: ${err.message}`);
-          failedCount++;
-          results.push({ partyCode, partyName, status: 'failed', error: err.message });
-
-          await EmailLog.create({
-            sessionId,
-            status: 'FAILED',
-            partyCode,
-            partyName,
-            emails: entry.emails,
-            error: err.message,
-          });
+        } else {
+          throw new Error(result.error);
         }
+      } catch (err) {
+        logLines.push(`FAILED: ${partyCode} | Error: ${err.message}`);
+        failedCount++;
+        results.push({ partyCode, partyName, status: 'failed', error: err.message });
 
-        // Random delay 1-5 seconds
-        await randomDelay(1000, 5000);
+        await EmailLog.create({
+          sessionId,
+          status: 'FAILED',
+          partyCode,
+          partyName,
+          emails: entry.emails,
+          error: err.message,
+        });
       }
-    } finally {
-      // Gracefully close the pool
-      transporter.close();
+
+      // Random delay 1-5 seconds — mirrors Python time.sleep(random.uniform(1,5))
+      await randomDelay(1000, 5000);
     }
 
     logLines.push('\n=== Skipped Parties ===');

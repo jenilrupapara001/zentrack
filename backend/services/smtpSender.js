@@ -1,71 +1,138 @@
 /**
- * SMTP sending service — mirrors Python send_email() using nodemailer
+ * SMTP sending service — Production-Grade version
+ * Implements a Singleton Transporter pattern and Enterprise Retry Logic.
  */
 const nodemailer = require('nodemailer');
 
+// Singleton instance
+let transporter;
+
 /**
- * Creates a hardened, pooled Nodemailer transporter
- * @param {Object} options 
- * @param {string} options.user
- * @param {string} options.pass
- * @param {string} options.host
- * @param {number} options.port
- * @param {boolean} options.secure
+ * Create or reuse transporter (singleton pattern)
+ * This prevents creating multiple connections during a batch send.
  */
-function createTransporter(options) {
-  const { user, pass, host = 'smtp.gmail.com', port = 465, secure = true } = options;
-  
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    pool: true, // Enable connection pooling for batch sends
+function getTransporter(gmailUser, appPassword) {
+  if (transporter) return transporter;
+
+  transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+      user: gmailUser,
+      pass: appPassword,
+    },
+    pool: true, // ✅ connection pooling
     maxConnections: 5,
     maxMessages: 100,
-    auth: {
-      user,
-      pass,
-    },
-    // Ultra-Hardened timeouts for Render production
-    connectionTimeout: 45000, // 45 seconds
-    greetingTimeout: 30000,   // 30 seconds
-    socketTimeout: 60000,     // 60 seconds
-    tls: {
-      rejectUnauthorized: false
-    }
+    connectionTimeout: 60000,
+    greetingTimeout: 30000,
+    socketTimeout: 60000,
   });
+
+  return transporter;
 }
 
 /**
- * Send an HTML email via a provided transporter or a one-off connection.
+ * Send an HTML email via Gmail SMTP
  */
-async function sendEmail(transporterOrOptions, toEmails, subject, htmlBody, cc = []) {
-  let transporter;
-  let isOneOff = false;
-
-  if (transporterOrOptions.sendMail) {
-    transporter = transporterOrOptions;
-  } else {
-    transporter = createTransporter(transporterOrOptions);
-    isOneOff = true;
-  }
-
-  const mailOptions = {
-    from: transporter.options.auth.user,
-    to: toEmails.join(', '),
-    cc: cc.length ? cc.join(', ') : undefined,
-    subject,
-    html: htmlBody,
-  };
-
+async function sendEmail(
+  gmailUser,
+  appPassword,
+  toEmails,
+  subject,
+  htmlBody,
+  cc = []
+) {
   try {
-    const info = await transporter.sendMail(mailOptions);
-    return info;
-  } finally {
-    if (isOneOff) {
-      transporter.close();
+    // Input validation
+    if (!gmailUser || !appPassword) {
+      throw new Error('Missing SMTP credentials');
+    }
+
+    if (!Array.isArray(toEmails) || toEmails.length === 0) {
+      throw new Error('Recipient email list is empty');
+    }
+
+    const t = getTransporter(gmailUser, appPassword);
+
+    const msg = {
+      from: gmailUser,
+      to: toEmails.join(', '),
+      cc: cc && cc.length ? cc.join(', ') : undefined,
+      subject,
+      html: htmlBody,
+    };
+
+    const startTime = Date.now();
+    const info = await t.sendMail(msg);
+
+    // Logging for audit trail
+    console.log('Email sent:', {
+      messageId: info.messageId,
+      to: msg.to,
+      response: info.response,
+      timeMs: Date.now() - startTime,
+    });
+
+    return {
+      success: true,
+      messageId: info.messageId,
+      response: info.response,
+    };
+
+  } catch (error) {
+    console.error('Email send failed:', {
+      error: error.message,
+      to: toEmails,
+      subject,
+    });
+
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * Retry wrapper (enterprise-level reliability)
+ */
+async function sendEmailWithRetry(
+  gmailUser,
+  appPassword,
+  toEmails,
+  subject,
+  htmlBody,
+  cc = [],
+  retries = 3
+) {
+  let attempt = 0;
+
+  while (attempt < retries) {
+    const result = await sendEmail(
+      gmailUser,
+      appPassword,
+      toEmails,
+      subject,
+      htmlBody,
+      cc
+    );
+
+    if (result.success) return result;
+
+    attempt++;
+    console.warn(`Retry ${attempt}/${retries} failed for ${toEmails[0]}`);
+
+    if (attempt < retries) {
+      await randomDelay(2000, 5000); // wait before retry
     }
   }
+
+  return {
+    success: false,
+    error: `All ${retries} retry attempts failed`,
+  };
 }
 
 /**
@@ -76,4 +143,8 @@ function randomDelay(minMs = 1000, maxMs = 5000) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-module.exports = { createTransporter, sendEmail, randomDelay };
+module.exports = {
+  sendEmail,
+  sendEmailWithRetry,
+  randomDelay,
+};

@@ -13,7 +13,7 @@ const settingsRoutes = require('./routes/settings');
 const statsRoutes = require('./routes/stats');
 
 const app = express();
-const PORT = process.env.PORT || 5002;
+const PORT = process.env.PORT || 5001;
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/payment_reconciliation')
@@ -41,10 +41,10 @@ app.use(session({
   proxy: true,
   name: 'zentrack.sid',
   cookie: { 
-    secure: true, 
+    secure: isProduction, 
     httpOnly: true, 
     maxAge: 7 * 24 * 60 * 60 * 1000, 
-    sameSite: 'none', 
+    sameSite: isProduction ? 'none' : 'lax', 
   },
 }));
 
