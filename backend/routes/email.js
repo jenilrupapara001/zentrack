@@ -55,54 +55,79 @@ router.post('/send', requireAuth, async (req, res) => {
     let failedCount = 0;
     const results = [];
 
-    for (const entry of matchedResults) {
-      const partyCode = entry.partyCode;
-      const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode);
-      const partyName = partyEmailRecord?.partyName || partyCode || 'Unknown Party';
-      const ccStr = partyEmailRecord?.cc || '';
-      const ccEmails = ccStr ? ccStr.split(',').map(e => e.trim()).filter(Boolean) : [];
-
-      const htmlBody = generateEmailBody(partyCode, entry.payments, entry.debits, partyEmails);
-
-      try {
-        await sendEmail(
-          gmailUser,
-          gmailPassword,
-          entry.emails,
-          `Payment Reconciliation for ${partyCode} - ${partyName}`,
-          htmlBody,
-          ccEmails
-        );
-
-        logLines.push(`Party Code: ${partyCode} | Party Name: ${partyName} | Emails: ${entry.emails.join(', ')} | CC: ${ccEmails.join(', ')}`);
-        sentCount++;
-        results.push({ partyCode, partyName, status: 'sent', emails: entry.emails });
-
-        await EmailLog.create({
-          sessionId,
-          status: 'SENT',
-          partyCode,
-          partyName,
-          emails: entry.emails,
-          cc: ccEmails,
-        });
-      } catch (err) {
-        logLines.push(`FAILED: ${partyCode} | Error: ${err.message}`);
-        failedCount++;
-        results.push({ partyCode, partyName, status: 'failed', error: err.message });
-
-        await EmailLog.create({
-          sessionId,
-          status: 'FAILED',
-          partyCode,
-          partyName,
-          emails: entry.emails,
-          error: err.message,
-        });
+    // SMTP Transporter Lifecycle Management
+    const { createTransporter } = require('../services/smtpSender');
+    let transporterConfig = { user: gmailUser, pass: gmailPassword };
+    
+    // Fetch extended config if smtpId was used
+    if (smtpId) {
+      const { SmtpCredential } = require('../models');
+      const cred = await SmtpCredential.findById(smtpId);
+      if (cred) {
+        transporterConfig = {
+          user: cred.user,
+          pass: cred.pass,
+          host: cred.host,
+          port: cred.port,
+          secure: cred.secure
+        };
       }
+    }
 
-      // Random delay 1-5 seconds — mirrors Python time.sleep(random.uniform(1,5))
-      await randomDelay(1000, 5000);
+    const transporter = createTransporter(transporterConfig);
+
+    try {
+      for (const entry of matchedResults) {
+        const partyCode = entry.partyCode;
+        const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode);
+        const partyName = partyEmailRecord?.partyName || partyCode || 'Unknown Party';
+        const ccStr = partyEmailRecord?.cc || '';
+        const ccEmails = ccStr ? ccStr.split(',').map(e => e.trim()).filter(Boolean) : [];
+
+        const htmlBody = generateEmailBody(partyCode, entry.payments, entry.debits, partyEmails);
+
+        try {
+          await sendEmail(
+            transporter,
+            entry.emails,
+            `Payment Reconciliation for ${partyCode} - ${partyName}`,
+            htmlBody,
+            ccEmails
+          );
+
+          logLines.push(`Party Code: ${partyCode} | Party Name: ${partyName} | Emails: ${entry.emails.join(', ')} | CC: ${ccEmails.join(', ')}`);
+          sentCount++;
+          results.push({ partyCode, partyName, status: 'sent', emails: entry.emails });
+
+          await EmailLog.create({
+            sessionId,
+            status: 'SENT',
+            partyCode,
+            partyName,
+            emails: entry.emails,
+            cc: ccEmails,
+          });
+        } catch (err) {
+          logLines.push(`FAILED: ${partyCode} | Error: ${err.message}`);
+          failedCount++;
+          results.push({ partyCode, partyName, status: 'failed', error: err.message });
+
+          await EmailLog.create({
+            sessionId,
+            status: 'FAILED',
+            partyCode,
+            partyName,
+            emails: entry.emails,
+            error: err.message,
+          });
+        }
+
+        // Random delay 1-5 seconds
+        await randomDelay(1000, 5000);
+      }
+    } finally {
+      // Gracefully close the pool
+      transporter.close();
     }
 
     logLines.push('\n=== Skipped Parties ===');
