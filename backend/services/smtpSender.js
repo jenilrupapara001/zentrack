@@ -26,12 +26,12 @@ function createTransporter(options) {
       user,
       pass,
     },
-    // Increased timeouts for production reliability
-    connectionTimeout: 20000, // 20 seconds
-    greetingTimeout: 15000,   // 15 seconds
-    socketTimeout: 30000,     // 30 seconds
+    // Ultra-Hardened timeouts for Render production
+    connectionTimeout: 45000, // 45 seconds
+    greetingTimeout: 30000,   // 30 seconds
+    socketTimeout: 60000,     // 60 seconds
     tls: {
-      rejectUnauthorized: false // Helps with some SMTP server certificate issues
+      rejectUnauthorized: false
     }
   });
 }
