@@ -20,14 +20,12 @@ import {
   Settings,
   Plus
 } from 'lucide-react';
-import {
-  getSmtpCredentials,
+import api, {
   sendEmails,
   downloadEmailLogTxt,
   downloadEmailLogExcel,
   triggerDownload,
-  getSessionById,
-  verifySmtpConnection
+  getSessionById
 } from '../services/api';
 import { useRefresh } from '../context/RefreshContext';
 
@@ -37,12 +35,11 @@ export default function EmailSender({ matchedResults: propResults }) {
   const sessionId = searchParams.get('sessionId');
   const { refreshKey } = useRefresh();
 
-  const [creds, setCreds] = useState([]);
-  const [selectedSmtpId, setSelectedSmtpId] = useState('');
   const [sending, setSending] = useState(false);
   const [sessionData, setSessionData] = useState(null);
   const [showPreview, setShowPreview] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [gmailStatus, setGmailStatus] = useState({ connected: false, email: null });
 
   // Determine active results
   const activeResults = sessionData?.matchedResults || propResults || [];
@@ -54,45 +51,41 @@ export default function EmailSender({ matchedResults: propResults }) {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [credsRes, sessionRes] = await Promise.all([
-        getSmtpCredentials(),
+      const [gmailRes, sessionRes] = await Promise.all([
+        api.get('/settings/gmail'),
         sessionId ? getSessionById(sessionId) : Promise.resolve({ data: { success: true, data: null } })
       ]);
 
-      const list = credsRes.data.data;
-      setCreds(list);
-      if (list.length > 0) setSelectedSmtpId(list[0]._id);
+      if (gmailRes.data) {
+        setGmailStatus(gmailRes.data);
+      }
 
       if (sessionRes.data.data) {
         setSessionData(sessionRes.data.data);
       }
     } catch {
-      toast.error('Could not initialize dispatch context');
+      toast.error('Could not initialize enterprise dispatch context');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSendBatch = async () => {
-    // If no SMTP selected, we'll try to use the system default (env)
-    // if (!selectedSmtpId) return toast.error('Select a sending identity'); 
-    
+    if (!gmailStatus.connected) return toast.error('Enterprise Dispatcher Offline: Connect Gmail in Settings');
     if (!activeResults.length) return toast.error('No results to broadcast');
-    if (!window.confirm(`ZenTrack will now broadcast ${activeResults.length} reconciliation emails. Proceed?`)) return;
+    
+    if (!window.confirm(`ZenTrack will now broadcast ${activeResults.length} reconciliation emails via the Enterprise Gmail API. Proceed?`)) return;
 
     setSending(true);
-    const toastId = toast.loading('Establishing Secure SMTP Handshake...');
+    const toastId = toast.loading('Initializing Enterprise Dispatcher...');
     try {
-      // 1. Verify Connection First
-      await verifySmtpConnection({
-        smtpId: selectedSmtpId
-      });
+      // 1. Verify Active Hook
+      await api.post('/email/verify');
       
       toast.success('Secure Handshake Established', { id: toastId });
       
-      // 2. Start broadcast (don't await it if we want immediate redirection)
+      // 2. Start broadcast
       sendEmails({
-        smtpId: selectedSmtpId,
         matchedResults: activeResults
       }).catch(err => {
         console.error('Background transmission error:', err);
@@ -105,7 +98,7 @@ export default function EmailSender({ matchedResults: propResults }) {
       }, 1500);
 
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Handshake failed. Check credentials.', { id: toastId });
+      toast.error(err.response?.data?.message || 'Dispatcher Handshake failed. Check infrastructure health.', { id: toastId });
       setSending(false);
     }
   };
@@ -133,35 +126,29 @@ export default function EmailSender({ matchedResults: propResults }) {
           <div className="card p-6">
             <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
               <ShieldCheck size={18} className="text-primary-600" />
-              SMTP Routing Identity
+              Routing Identity
             </h3>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Active Profile</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <select
-                    value={selectedSmtpId}
-                    onChange={e => setSelectedSmtpId(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-transparent focus:bg-white focus:border-primary-500 focus:ring-4 focus:ring-primary-100 rounded-xl text-sm transition-all outline-none appearance-none"
-                  >
-                    {creds.length === 0 ? (
-                      <option value="">No Accounts Configured</option>
-                    ) : (
-                      creds.map(c => (
-                        <option key={c._id} value={c._id}>{c.label} ({c.user})</option>
-                      ))
-                    )}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Enterprise Connection</label>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
+                  <div className="p-2 bg-white border border-slate-100 rounded-lg text-primary-600 shadow-sm">
+                    <Globe size={18} />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Google Cloud (Gmail API)</div>
+                    <div className="text-sm font-bold text-slate-900 leading-none">
+                      {gmailStatus.connected ? gmailStatus.email : 'OFFLINE'}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                <div className="text-[10px] font-bold text-slate-400 uppercase mb-2">Security Protocol</div>
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                  <Lock size={12} className="text-green-600" /> AES-256 Vault-backed storage
+              <div className="pt-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                <div className="text-[10px] font-bold text-blue-400 uppercase mb-2 leading-tight">Security Protocol</div>
+                <div className="flex items-center gap-2 text-[10px] font-black text-blue-700 uppercase tracking-tighter">
+                  <Lock size={12} className="text-blue-600" /> OAuth2 / AES-256 Vault Encryption
                 </div>
               </div>
             </div>

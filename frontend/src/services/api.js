@@ -71,12 +71,8 @@ export const downloadEmailLogTxt = () =>
   api.get('/email/log/download', { responseType: 'blob' });
 export const downloadEmailLogExcel = () =>
   api.get('/email/log/excel', { responseType: 'blob' });
-export const verifySmtpConnection = (data) => api.post('/email/verify', data);
 
 // ── Settings ─────────────────────────────────────────────────────────────────
-export const getSmtpCredentials = () => api.get('/settings/smtp');
-export const addSmtpCredential = (data) => api.post('/settings/smtp', data);
-export const deleteSmtpCredential = (id) => api.delete(`/settings/smtp/${id}`);
 export const downloadNoEmailCsv = (partiesWithoutEmail) =>
   api.get('/email/log/no-email/download', {
     params: { partiesWithoutEmail: encodeURIComponent(JSON.stringify(partiesWithoutEmail)) },

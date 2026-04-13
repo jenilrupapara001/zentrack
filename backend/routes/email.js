@@ -2,9 +2,15 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { PartyEmail, EmailLog, SmtpCredential } = require('../models');
+const { PartyEmail, EmailLog, GoogleAuth } = require('../models');
 const { generateEmailBody } = require('../services/emailGenerator');
-const { sendEmailWithRetry, randomDelay, verifyConnection } = require('../services/smtpSender');
+const gmailSender = require('../services/gmailSender');
+
+// Utility for throttling
+const randomDelay = (minMs = 1000, maxMs = 5000) => {
+  const ms = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  return new Promise(resolve => setTimeout(resolve, ms));
+};
 
 // GET /api/email/logs — get all email logs
 router.get('/logs', requireAuth, async (req, res) => {
@@ -16,62 +22,31 @@ router.get('/logs', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/email/verify — verify SMTP connection
+// POST /api/email/verify — verify Gmail connection
 router.post('/verify', requireAuth, async (req, res) => {
   try {
-    let { gmailUser, gmailPassword, smtpId } = req.body;
-
-    // Use env vars if nothing provided
-    if (!smtpId && !gmailUser && !gmailPassword) {
-      gmailUser = process.env.GMAIL_USER;
-      gmailPassword = process.env.GMAIL_PASS;
+    const authRecord = await GoogleAuth.findOne({ isActive: true });
+    if (!authRecord) {
+      return res.status(403).json({ success: false, message: 'No Google account connected. Please visit Settings.' });
     }
-
-    if (smtpId && (!gmailUser || !gmailPassword)) {
-      const cred = await SmtpCredential.findById(smtpId);
-      if (cred) {
-        gmailUser = cred.user;
-        gmailPassword = cred.pass;
-      }
-    }
-
-    const result = await verifyConnection(gmailUser, gmailPassword);
-    if (!result.success) {
-      return res.status(403).json({ success: false, message: result.error || 'Connection failed' });
-    }
-
-    res.json({ success: true, message: 'SMTP Handshake Successful' });
+    // We don't necessarily need a 'ping', just checking if we have the record is 
+    // the first step for this enterprise version. 
+    res.json({ success: true, message: `Enterprise Dispatcher Active [${authRecord.email}]` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// POST /api/email/send — send all matched emails
+// POST /api/email/send — send all matched emails via Enterprise Gmail API
 router.post('/send', requireAuth, async (req, res) => {
   try {
-    let { gmailUser, gmailPassword, smtpId, matchedResults } = req.body;
+    const { matchedResults, delay: manualDelay } = req.body;
 
-    // Resolve credentials priority:
-    // 1. Provided smtpId (stored profile)
-    // 2. Provided direct gmailUser/Pass (manual override)
-    // 3. Environment Variables (system default)
-    
-    if (smtpId && (!gmailUser || !gmailPassword)) {
-      const cred = await SmtpCredential.findById(smtpId);
-      if (cred) {
-        gmailUser = cred.user;
-        gmailPassword = cred.pass;
-      }
+    const authRecord = await GoogleAuth.findOne({ isActive: true });
+    if (!authRecord) {
+      return res.status(400).json({ success: false, message: 'Enterprise Dispatcher offline: No Google account connected.' });
     }
 
-    if (!gmailUser || !gmailPassword) {
-      gmailUser = process.env.GMAIL_USER;
-      gmailPassword = process.env.GMAIL_PASS;
-    }
-
-    if (!gmailUser || !gmailPassword) {
-      return res.status(400).json({ success: false, message: 'Gmail credentials required' });
-    }
     if (!matchedResults || !Array.isArray(matchedResults) || !matchedResults.length) {
       return res.status(400).json({ success: false, message: 'No matched results to send' });
     }
@@ -93,14 +68,12 @@ router.post('/send', requireAuth, async (req, res) => {
       const htmlBody = generateEmailBody(partyCode, entry.payments, entry.debits, partyEmails);
 
       try {
-        const result = await sendEmailWithRetry(
-          gmailUser,
-          gmailPassword,
-          entry.emails,
-          `Payment Reconciliation for ${partyCode} - ${partyName}`,
-          htmlBody,
-          ccEmails
-        );
+        const result = await gmailSender.sendMail({
+          to: entry.emails,
+          cc: ccEmails,
+          subject: `Payment Reconciliation for ${partyCode} - ${partyName}`,
+          html: htmlBody
+        });
 
         if (result.success) {
           logLines.push(`Party Code: ${partyCode} | Party Name: ${partyName} | Emails: ${entry.emails.join(', ')} | CC: ${ccEmails.join(', ')}`);

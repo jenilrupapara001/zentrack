@@ -45,19 +45,6 @@ const reconciliationSessionSchema = new mongoose.Schema({
 
 const ReconciliationSession = mongoose.model('ReconciliationSession', reconciliationSessionSchema);
 
-// ─── SMTP Credential Model ─────────────────────────────────────────────────────
-const smtpCredentialSchema = new mongoose.Schema({
-  label: { type: String, required: true },
-  user: { type: String, required: true },
-  pass: { type: String, required: true },
-  host: { type: String, default: 'smtp.gmail.com' },
-  port: { type: Number, default: 465 },
-  secure: { type: Boolean, default: true },
-  isActive: { type: Boolean, default: true },
-}, { timestamps: true });
-
-const SmtpCredential = mongoose.model('SmtpCredential', smtpCredentialSchema);
-
 // ─── Google Auth Model ─────────────────────────────────────────────────────────
 const googleAuthSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
@@ -67,4 +54,4 @@ const googleAuthSchema = new mongoose.Schema({
 
 const GoogleAuth = mongoose.model('GoogleAuth', googleAuthSchema);
 
-module.exports = { PartyEmail, EmailLog, ReconciliationSession, SmtpCredential, GoogleAuth };
+module.exports = { PartyEmail, EmailLog, ReconciliationSession, GoogleAuth };

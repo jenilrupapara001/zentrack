@@ -1,10 +1,12 @@
 const { google } = require('googleapis');
 const { GoogleAuth } = require('../models');
+const MailComposer = require('nodemailer/lib/mail-composer');
 
 /**
- * GMAIL API DISPATCH SERVICE
- * -------------------------
- * Handles OAuth2 email transmission using Google APIs.
+ * GMAIL ENTERPRISE DISPATCH SERVICE
+ * --------------------------------
+ * Robust OAuth2 email transmission service using Google APIs.
+ * Supports HTML bodies and high-volume Excel attachments.
  */
 class GmailSender {
   constructor() {
@@ -17,40 +19,41 @@ class GmailSender {
 
   async sendMail({ to, cc, subject, text, html, attachments }) {
     try {
-      // 1. Fetch the active Gmail connection
+      // 1. Fetch active infrastructure record
       const authRecord = await GoogleAuth.findOne({ isActive: true });
       if (!authRecord) {
-        throw new Error('No active Gmail account connected.');
+        throw new Error('Enterprise Dispatcher Offline: No active Gmail account connected.');
       }
 
-      // 2. Configure credentials
+      // 2. Refresh Gateway Credentials
       this.oauth2Client.setCredentials({
         refresh_token: authRecord.refreshToken
       });
 
       const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
 
-      // 3. Construct Raw Email (MIME)
-      const messageParts = [
-        `From: <${authRecord.email}>`,
-        `To: ${Array.isArray(to) ? to.join(', ') : to}`,
-        cc ? `Cc: ${Array.isArray(cc) ? cc.join(', ') : cc}` : '',
-        `Subject: ${subject}`,
-        'MIME-Version: 1.0',
-        'Content-Type: text/html; charset=utf-8',
-        'Content-Transfer-Encoding: 7bit',
-        '',
-        html || text,
-      ];
+      // 3. Construct Multipart MIME Message (Enterprise Grade)
+      // Using MailComposer ensures correct boundary management for attachments
+      const mailOptions = {
+        from: authRecord.email,
+        to: Array.isArray(to) ? to.join(', ') : to,
+        cc: cc ? (Array.isArray(cc) ? cc.join(', ') : cc) : undefined,
+        subject: subject,
+        text: text,
+        html: html,
+        attachments: attachments || []
+      };
 
-      const rawMessage = messageParts.join('\n');
-      const encodedMessage = Buffer.from(rawMessage)
-        .toString('base64')
+      const composer = new MailComposer(mailOptions);
+      const messageBuffer = await composer.compile().build();
+      
+      // 4. Base64URL Encode for Google API Requirements
+      const encodedMessage = messageBuffer.toString('base64')
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
         .replace(/=+$/, '');
 
-      // 4. Dispatch
+      // 5. High-Priority Dispatch
       const res = await gmail.users.messages.send({
         userId: 'me',
         requestBody: {
@@ -58,9 +61,10 @@ class GmailSender {
         },
       });
 
+      console.log(`📡 DISPATCH SUCCESS: [MsgID: ${res.data.id}] Sent via ${authRecord.email}`);
       return { success: true, messageId: res.data.id, email: authRecord.email };
     } catch (err) {
-      console.error('❌ GMAIL API ERROR:', err.message);
+      console.error('❌ GMAIL ENTERPRISE ERROR:', err.message);
       throw err;
     }
   }
