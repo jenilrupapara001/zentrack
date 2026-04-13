@@ -12,6 +12,22 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Production Diagnostic Interceptor
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (import.meta.env.PROD) {
+      console.error('📡 ZenTrack Network Error:', {
+        status: error.response?.status,
+        path: error.config?.url,
+        message: error.message,
+        hint: error.response?.status === 504 ? 'Render Gateway Timeout (Backend Cold Start)' : 'Connection Refused'
+      });
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Diagnostic telemetry
 if (import.meta.env.DEV) {
   console.log('🚀 ZenTrack API initialized (Bridge Mode)');

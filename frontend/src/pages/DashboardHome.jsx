@@ -12,8 +12,10 @@ import {
   ArrowDownRight,
   Zap,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  RefreshCcw
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import {
   LineChart,
   Line,
@@ -58,21 +60,24 @@ export default function DashboardHome() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  const fetchStats = async () => {
+    setLoading(true);
+    try {
+      const res = await getDashboardStats();
+      setStats(res.data.data);
+    } catch (err) {
+      console.error("Stats fetch failed", err);
+      toast.error('System synchronization failed. The backend might be starting up.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const res = await getDashboardStats();
-        setStats(res.data.data);
-      } catch (err) {
-        console.error("Stats fetch failed", err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchStats();
   }, [refreshKey]);
 
-  if (loading || !stats) {
+  if (loading) {
     return (
       <div className="h-full flex flex-col items-center justify-center py-40 gap-6 animate-in fade-in duration-700">
         <div className="relative">
@@ -83,6 +88,27 @@ export default function DashboardHome() {
           <h3 className="text-sm font-black text-slate-900 uppercase tracking-[0.2em]">Aggregating Data</h3>
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Global Telemetry Stream v4.0</p>
         </div>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center py-40 gap-6 animate-in zoom-in-95 duration-500">
+        <div className="p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100 shadow-sm">
+          <AlertCircle size={32} />
+        </div>
+        <div className="text-center space-y-2">
+          <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest italic">Connection Interrupted</h3>
+          <p className="text-[11px] font-medium text-slate-400 max-w-xs mx-auto">The protocol node is unreachable. This usually happens during backend cold-starts. Please wait 10s and retry.</p>
+        </div>
+        <button 
+          onClick={fetchStats}
+          className="btn-primary flex items-center gap-2 px-8"
+        >
+          <RefreshCcw size={18} />
+          Retry Initialization
+        </button>
       </div>
     );
   }

@@ -5,6 +5,8 @@ const { PartyEmail, EmailLog, ReconciliationSession } = require('../models');
 
 // GET /api/stats — Aggregate telemetry for dashboard
 router.get('/', requireAuth, async (req, res) => {
+  const start = Date.now();
+  console.log(`📊 Aggregating dashboard stats... [User: ${req.session.authenticated}]`);
   try {
     const totalParties = await PartyEmail.countDocuments();
     

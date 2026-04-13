@@ -25,24 +25,20 @@ export default function App() {
       .finally(() => setChecking(false));
   }, []);
 
-  if (checking) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-zen-flow">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-slate-200 border-t-primary-600 rounded-full animate-spin shadow-xl shadow-primary-100" />
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest animate-pulse">
-            Establishing ZenTrack Bridge...
-          </span>
-        </div>
-      </div>
-    );
-  }
-
   const handleLogout = () => {
-    // Clear session-level state
     setAuthenticated(false);
-    // Note: The BrowserRouter will automatically re-render and match the unauthenticated routes
   };
+
+  const LoadingScreen = () => (
+    <div className="h-screen w-full flex items-center justify-center bg-zen-flow">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-slate-200 border-t-primary-600 rounded-full animate-spin shadow-xl shadow-primary-100" />
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest animate-pulse">
+          Establishing ZenTrack Bridge...
+        </span>
+      </div>
+    </div>
+  );
 
   return (
     <RefreshProvider>
@@ -55,30 +51,32 @@ export default function App() {
         />
         
         <Routes>
-          {/* Public Landing Always Accessible */}
+          {/* Public Landing Always Accessible Immediately */}
           <Route path="/" element={<LandingPage />} />
           
-          {!authenticated ? (
-            <>
-              {/* Login Portal */}
-              <Route path="/login" element={<LoginPage onLogin={() => setAuthenticated(true)} />} />
-              
-              {/* Unauthenticated Fallback: Always return to Landing Page */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </>
-          ) : (
-            <Route element={<MainLayout onLogout={handleLogout} />}>
-              <Route path="/dashboard" element={<DashboardHome />} />
-              <Route path="/reconciliation" element={<ReconciliationView />} />
-              <Route path="/parties" element={<PartyManagement />} />
-              <Route path="/sender" element={<EmailSender />} />
-              <Route path="/logs" element={<LogsReporting />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              
-              {/* Authenticated Fallback: Return to Dashboard */}
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Route>
-          )}
+          {/* Auth-Dependent Routes */}
+          <Route path="*" element={
+            checking ? (
+              <LoadingScreen />
+            ) : !authenticated ? (
+              <Routes>
+                <Route path="/login" element={<LoginPage onLogin={() => setAuthenticated(true)} />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            ) : (
+              <Routes>
+                <Route element={<MainLayout onLogout={handleLogout} />}>
+                  <Route path="/dashboard" element={<DashboardHome />} />
+                  <Route path="/reconciliation" element={<ReconciliationView />} />
+                  <Route path="/parties" element={<PartyManagement />} />
+                  <Route path="/sender" element={<EmailSender />} />
+                  <Route path="/logs" element={<LogsReporting />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                </Route>
+              </Routes>
+            )
+          } />
         </Routes>
       </BrowserRouter>
     </RefreshProvider>
