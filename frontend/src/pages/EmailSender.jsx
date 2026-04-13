@@ -87,6 +87,10 @@ export default function EmailSender({ matchedResults: propResults }) {
       // 2. Start broadcast
       sendEmails({
         matchedResults: activeResults
+      }).then(res => {
+        if (res.data.success) {
+          toast.success(`Enterprise Dispatch Complete: ${res.data.data.sentCount} sent successfully.`);
+        }
       }).catch(err => {
         console.error('Background transmission error:', err);
         toast.error('A critical error occurred during background transmission.');
