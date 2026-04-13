@@ -8,27 +8,33 @@ function safeNum(val) {
   return isNaN(n) ? 0 : n;
 }
 
-function safeDateFormat(val) {
-  if (val === null || val === undefined || val === '') return '';
+function parseExcelDate(val) {
+  if (val === null || val === undefined || val === '') return null;
   try {
     let date;
-    // XLSX stores dates as serial numbers
     if (typeof val === 'number') {
-      date = XLSX.SSF.parse_date_code(val);
-      if (date) {
-        const d = String(date.d).padStart(2, '0');
-        const m = String(date.m).padStart(2, '0');
-        return `${d}/${m}/${date.y}`;
+      const parsed = XLSX.SSF.parse_date_code(val);
+      if (parsed) {
+        // SSF dates are 1-indexed for month
+        date = new Date(parsed.y, parsed.m - 1, parsed.d);
       }
+    } else {
+      date = new Date(val);
     }
-    date = new Date(val);
-    if (isNaN(date.getTime())) return String(val);
-    const d = String(date.getDate()).padStart(2, '0');
-    const mo = String(date.getMonth() + 1).padStart(2, '0');
-    return `${d}/${mo}/${date.getFullYear()}`;
+    
+    if (!date || isNaN(date.getTime()) || date.getFullYear() < 1980) return null;
+    return date;
   } catch {
-    return String(val);
+    return null;
   }
+}
+
+function safeDateFormat(val) {
+  const date = parseExcelDate(val);
+  if (!date) return val ? String(val) : '';
+  const d = String(date.getDate()).padStart(2, '0');
+  const mo = String(date.getMonth() + 1).padStart(2, '0');
+  return `${d}/${mo}/${date.getFullYear()}`;
 }
 
 function deriveCode(val) {
@@ -262,4 +268,4 @@ function matchData(paymentDf, debitDf, partyEmails) {
   return { result, skipLogLines, partiesWithoutEmail };
 }
 
-module.exports = { loadExcel, matchData, validateDates, safeDateFormat, normalizeName };
+module.exports = { loadExcel, matchData, validateDates, safeDateFormat, normalizeName, parseExcelDate };

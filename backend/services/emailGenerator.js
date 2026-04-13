@@ -1,7 +1,7 @@
 /**
  * Email body generator — exact port of Python generate_email_body()
  */
-const { safeDateFormat } = require('./excelParser');
+const { safeDateFormat, parseExcelDate } = require('./excelParser');
 
 const EMAIL_TEMPLATE = `
 <html>
@@ -114,9 +114,9 @@ function generateEmailBody(partyCode, paymentRows, debitRows, partyEmails = []) 
   // Compute latest payment date
   let latestPaymentDate = 'N/A';
   if (paymentDates.length) {
-    const parsed = paymentDates.map(d => new Date(d)).filter(d => !isNaN(d.getTime()));
+    const parsed = paymentDates.map(d => parseExcelDate(d)).filter(d => d !== null);
     if (parsed.length) {
-      latestPaymentDate = safeDateFormat(new Date(Math.max(...parsed))) || 'N/A';
+      latestPaymentDate = safeDateFormat(new Date(Math.max(...parsed.map(d => d.getTime())))) || 'N/A';
     }
   }
 
