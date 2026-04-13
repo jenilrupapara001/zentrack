@@ -58,4 +58,13 @@ const smtpCredentialSchema = new mongoose.Schema({
 
 const SmtpCredential = mongoose.model('SmtpCredential', smtpCredentialSchema);
 
-module.exports = { PartyEmail, EmailLog, ReconciliationSession, SmtpCredential };
+// ─── Google Auth Model ─────────────────────────────────────────────────────────
+const googleAuthSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
+  refreshToken: { type: String, required: true },
+  isActive: { type: Boolean, default: true },
+}, { timestamps: true });
+
+const GoogleAuth = mongoose.model('GoogleAuth', googleAuthSchema);
+
+module.exports = { PartyEmail, EmailLog, ReconciliationSession, SmtpCredential, GoogleAuth };

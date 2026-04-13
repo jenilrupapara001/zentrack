@@ -56,6 +56,12 @@ export default function LoginPage({ onLogin }) {
             </div>
             <h1 className="text-xl font-black text-slate-900 tracking-tight">Enterprise Identity</h1>
             <p className="text-[13px] font-medium text-slate-500 mt-2">ZenTrack Workforce Management Console</p>
+            
+            {/* Cold Start Indicator */}
+            <div className="mt-4 flex items-center justify-center gap-2 py-1.5 px-3 bg-slate-50 rounded-full border border-slate-100 animate-in fade-in duration-1000">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Backend Uplink Active</span>
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

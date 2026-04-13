@@ -48,26 +48,53 @@ const SmtpCard = ({ cred, onDelete }) => (
 );
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('Security');
-  const [creds, setCreds] = useState([]);
+  const [activeTab, setActiveTab] = useState('Account');
+  const [smtpCreds, setSmtpCreds] = useState([]);
+  const [gmailStatus, setGmailStatus] = useState({ connected: false, email: null });
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [delay, setDelay] = useState(3);
   const [form, setForm] = useState({ label: '', user: '', pass: '', host: 'smtp.gmail.com', port: 465, secure: true });
   const [showPass, setShowPass] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const fetchGmailStatus = async () => {
+    try {
+      const res = await api.get('/settings/gmail');
+      setGmailStatus(res.data);
+    } catch (err) {
+      console.error('Failed to fetch Gmail status', err);
+    }
+  };
+
+  const fetchSmtpStatus = async () => {
+    try {
+      const res = await api.get('/settings/smtp');
+      setSmtpCreds(res.data.data);
+    } catch (err) {
+      console.error('Failed to fetch SMTP credentials', err);
+    }
+  };
 
   useEffect(() => {
-    fetchCreds();
-  }, []);
-
-  const fetchCreds = async () => {
-    try {
-      const res = await getSmtpCredentials();
-      setCreds(res.data.data);
-    } catch {
-      toast.error('Failed to load credentials');
-    } finally {
+    const init = async () => {
+      setLoading(true);
+      await Promise.all([fetchGmailStatus(), fetchSmtpStatus()]);
       setLoading(false);
+    };
+    init();
+  }, [refreshKey]);
+
+  const handleDisconnectGmail = async () => {
+    if (!window.confirm('Are you sure you want to disconnect your Gmail account?')) return;
+    try {
+      const res = await api.delete('/settings/gmail');
+      if (res.data.success) {
+        toast.success('Gmail Disconnected');
+        fetchGmailStatus();
+      }
+    } catch (err) {
+      toast.error('Failed to disconnect Gmail');
     }
   };
 
@@ -79,7 +106,7 @@ export default function SettingsPage() {
       toast.success('SMTP Account Registered');
       setShowAdd(false);
       setForm({ label: '', user: '', pass: '', host: 'smtp.gmail.com', port: 465, secure: true });
-      fetchCreds();
+      fetchSmtpStatus();
     } catch {
       toast.error('Registration failed');
     }
@@ -90,7 +117,7 @@ export default function SettingsPage() {
     try {
       await deleteSmtpCredential(id);
       toast.success('Account Removed');
-      fetchCreds();
+      fetchSmtpStatus();
     } catch {
       toast.error('Deletion failed');
     }
@@ -281,29 +308,55 @@ export default function SettingsPage() {
 
                   <div className="p-6 space-y-4">
                     {/* Google OAuth Section */}
-                    <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-4 mb-6">
+                    <div className={cn(
+                      "p-6 rounded-2xl space-y-4 mb-6 transition-all",
+                      gmailStatus.connected ? "bg-green-50/50 border border-green-100" : "bg-blue-50/50 border border-blue-100"
+                    )}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                          <div className="p-2.5 bg-white border border-blue-100 rounded-lg text-blue-600 shadow-sm">
+                          <div className={cn(
+                            "p-2.5 bg-white border rounded-lg shadow-sm",
+                            gmailStatus.connected ? "text-green-600 border-green-100" : "text-blue-600 border-blue-100"
+                          )}>
                             <Globe size={20} />
                           </div>
                           <div>
                             <div className="text-sm font-bold text-slate-900">Google Cloud (Gmail API)</div>
-                            <div className="text-[10px] text-blue-500 font-bold uppercase tracking-widest">Enterprise-grade secure connection</div>
+                            {gmailStatus.connected ? (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px] text-green-600 font-black uppercase tracking-widest">{gmailStatus.email}</span>
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-blue-500 font-bold uppercase tracking-widest">Enterprise-grade secure connection</div>
+                            )}
                           </div>
                         </div>
-                        <a 
-                          href={`${window.location.origin.includes('localhost') ? 'http://localhost:5001' : ''}/api/auth/google`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn-primary bg-blue-600 hover:bg-blue-700 border-none shadow-md shadow-blue-100 flex items-center gap-2"
-                        >
-                          <Lock size={16} />
-                          Connect Gmail Account
-                        </a>
+                        
+                        {gmailStatus.connected ? (
+                          <button 
+                            onClick={handleDisconnectGmail}
+                            className="px-4 py-2 text-xs font-bold text-red-600 bg-white border border-red-100 hover:bg-red-50 rounded-xl shadow-sm transition-all flex items-center gap-2"
+                          >
+                            <Trash2 size={14} />
+                            Disconnect Account
+                          </button>
+                        ) : (
+                          <a 
+                            href={`${window.location.origin.includes('localhost') ? 'http://localhost:5001' : ''}/api/auth/google`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-primary bg-blue-600 hover:bg-blue-700 border-none shadow-md shadow-blue-100 flex items-center gap-2 px-6 h-10"
+                          >
+                            <Lock size={16} />
+                            Connect Gmail
+                          </a>
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-500 leading-relaxed">
-                        Using the Gmail API is recommended for high-volume dispatch. It provides better deliverability and more robust security than standard SMTP.
+                        {gmailStatus.connected 
+                          ? "ZenTrack is currently using this Gmail account for high-priority dispatch. All reconciliations will be routed through the Gmail API."
+                          : "Using the Gmail API is recommended for high-priority volumes. It provides better deliverability and more robust encryption than standard SMTP."}
                       </p>
                     </div>
 
@@ -369,14 +422,14 @@ export default function SettingsPage() {
                          <div className="w-10 h-10 border-4 border-slate-100 border-t-primary-600 rounded-full animate-spin" />
                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Syncing Vault...</span>
                       </div>
-                    ) : creds.length === 0 ? (
+                    ) : smtpCreds.length === 0 ? (
                       <div className="py-20 text-center space-y-2 border-2 border-dashed border-slate-100 rounded-2xl">
                          <div className="text-slate-300 flex justify-center"><Mail size={40} /></div>
                          <div className="text-sm font-bold text-slate-400">No identities found in vault</div>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         {creds.map(c => <SmtpCard key={c._id} cred={c} onDelete={handleDelete} />)}
+                         {smtpCreds.map(c => <SmtpCard key={c._id} cred={c} onDelete={handleDelete} />)}
                       </div>
                     )}
                   </div>

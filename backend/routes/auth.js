@@ -49,11 +49,16 @@ router.get('/status', (req, res) => {
 });
 
 // ─── Google OAuth (Gmail API) ────────────────────────────────────────────────
+const { GoogleAuth } = require('../models');
+
 // GET /api/auth/google
 router.get('/google', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/gmail.send'],
+    scope: [
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/userinfo.email'
+    ],
     prompt: 'consent', // Force to get refresh token
   });
   res.redirect(url);
@@ -64,17 +69,29 @@ router.get('/google/callback', async (req, res) => {
   const { code } = req.query;
   try {
     const { tokens } = await oauth2Client.getToken(code);
-    
+    oauth2Client.setCredentials(tokens);
+
+    // Fetch user email
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const userInfo = await oauth2.userinfo.get();
+    const email = userInfo.data.email;
+
     if (tokens.refresh_token) {
-      console.log('✅ REFRESH TOKEN CAPTURED:', tokens.refresh_token);
-      console.log('----------------------------------------------------');
-      console.log('Action Required: Add the following to your .env file:');
-      console.log(`GOOGLE_REFRESH_TOKEN=${tokens.refresh_token}`);
-      console.log('----------------------------------------------------');
-      
-      // We also store it in the session temporarily so the frontend can display a success message
-      req.session.gmail_connected = true;
+      await GoogleAuth.findOneAndUpdate(
+        { email },
+        { refreshToken: tokens.refresh_token, isActive: true },
+        { upsert: true, new: true }
+      );
+      console.log(`✅ DISPATCH HUB: Gmail authorized for ${email}`);
+    } else {
+      // If we didn't get a refresh token, check if we already have one
+      const existing = await GoogleAuth.findOne({ email });
+      if (!existing) {
+        throw new Error('No refresh token received. Revoke access and try again.');
+      }
     }
+
+    req.session.gmail_connected = email;
 
     res.send(`
       <div style="font-family: sans-serif; text-align: center; padding: 100px 20px; background: #f8fafc; min-height: 100vh;">

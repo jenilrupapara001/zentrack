@@ -17,11 +17,24 @@ import { RefreshProvider } from './context/RefreshContext';
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [checking, setChecking] = useState(true);
-
   useEffect(() => {
-    getAuthStatus()
-      .then(res => setAuthenticated(res.data.authenticated))
-      .catch(() => setAuthenticated(false))
+    // Identity verification with safe-abort timeout for cold-starts
+    const authPromise = getAuthStatus();
+    const timeoutPromise = new Promise((resolve) => 
+      setTimeout(() => resolve({ data: { authenticated: false, isTimeout: true } }), 10000)
+    );
+
+    Promise.race([authPromise, timeoutPromise])
+      .then(res => {
+        setAuthenticated(res.data.authenticated);
+        if (res.data.isTimeout) {
+          console.warn('📶 Auth check timed out. Defaulting to unauthenticated for performance.');
+        }
+      })
+      .catch((err) => {
+        console.error('🛡️ Auth check failed:', err);
+        setAuthenticated(false);
+      })
       .finally(() => setChecking(false));
   }, []);
 
@@ -51,18 +64,16 @@ export default function App() {
         />
         
         <Routes>
-          {/* Public Landing Always Accessible Immediately */}
+          {/* Public Routes - Accessible Immediately */}
           <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage onLogin={() => setAuthenticated(true)} />} />
           
           {/* Auth-Dependent Routes */}
           <Route path="*" element={
             checking ? (
               <LoadingScreen />
             ) : !authenticated ? (
-              <Routes>
-                <Route path="/login" element={<LoginPage onLogin={() => setAuthenticated(true)} />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+              <Navigate to="/" replace />
             ) : (
               <Routes>
                 <Route element={<MainLayout onLogout={handleLogout} />}>
