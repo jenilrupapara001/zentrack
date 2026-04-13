@@ -66,7 +66,9 @@ export default function App() {
         <Routes>
           {/* Public Routes - Accessible Immediately */}
           <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage onLogin={() => setAuthenticated(true)} />} />
+          <Route path="/login" element={
+            authenticated ? <Navigate to="/dashboard" replace /> : <LoginPage onLogin={() => setAuthenticated(true)} />
+          } />
           
           {/* Auth-Dependent Routes */}
           <Route path="*" element={

@@ -21,7 +21,7 @@ import {
   Globe
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { 
+import api, { 
   getSmtpCredentials, 
   addSmtpCredential, 
   deleteSmtpCredential 
