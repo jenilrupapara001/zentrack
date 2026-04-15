@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { getPartyEmails, updatePartyEmail } from '../services/api';
-import { Edit2, Save, Lock } from 'lucide-react';
+import { getPartyEmails, updatePartyEmail, downloadPartyEmailsCsv, triggerDownload } from '../services/api';
+import { Edit2, Save, Lock, Download } from 'lucide-react';
 
 export default function PartyEmailEditor() {
   const [parties, setParties] = useState([]);
@@ -46,10 +46,26 @@ export default function PartyEmailEditor() {
     }
   };
 
+  const handleExport = async () => {
+    try {
+      const res = await downloadPartyEmailsCsv();
+      triggerDownload(res.data, 'party_emails.csv');
+      toast.success('Party emails exported');
+    } catch {
+      toast.error('Export failed');
+    }
+  };
+
   if (fetching) return <div className="loading-text">Loading party list…</div>;
 
   return (
     <div className="email-editor">
+      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+        <button className="btn btn-secondary" onClick={handleExport}>
+          <Download size={16} style={{ marginRight: '8px' }} />
+          Export CSV
+        </button>
+      </div>
       <div className="form-group" style={{ marginBottom: '32px' }}>
         <label>Select Identity</label>
         <select

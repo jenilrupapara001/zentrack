@@ -74,6 +74,8 @@ export const downloadEmailLogTxt = () =>
   api.get('/email/log/download', { responseType: 'blob' });
 export const downloadEmailLogExcel = () =>
   api.get('/email/log/excel', { responseType: 'blob' });
+export const downloadPartyEmailsCsv = () =>
+  api.get('/email/party/export', { responseType: 'blob' });
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 export const downloadNoEmailCsv = (partiesWithoutEmail) =>

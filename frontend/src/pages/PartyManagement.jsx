@@ -17,9 +17,10 @@ import {
   User as UserIcon,
   ChevronLeft,
   ChevronRight,
-  MoreHorizontal
+  MoreHorizontal,
+  Download
 } from 'lucide-react';
-import { getPartyEmails, updatePartyEmail, uploadPartyEmails } from '../services/api';
+import { getPartyEmails, updatePartyEmail, uploadPartyEmails, downloadPartyEmailsCsv, triggerDownload } from '../services/api';
 import { useDropzone } from 'react-dropzone';
 import { cn } from '../lib/utils';
 
@@ -116,6 +117,16 @@ export default function PartyManagement() {
     }
   };
 
+  const handleExport = async () => {
+    try {
+      const res = await downloadPartyEmailsCsv();
+      triggerDownload(res.data, 'party_emails.csv');
+      toast.success('Party emails exported');
+    } catch {
+      toast.error('Export failed');
+    }
+  };
+
   const filteredParties = parties.filter(p => 
     p.partyCode?.toLowerCase().includes(search.toLowerCase()) ||
     p.partyName?.toLowerCase().includes(search.toLowerCase()) ||
@@ -151,13 +162,22 @@ export default function PartyManagement() {
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Identity Management</h1>
           <p className="text-slate-500 text-sm mt-1">Manage entity communication mappings and secure SMTP routing.</p>
         </div>
-        <button 
-          onClick={() => setShowBulkUpload(true)}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Upload size={18} />
-          Bulk Registry Import
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={handleExport}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <Download size={18} />
+            Export CSV
+          </button>
+          <button 
+            onClick={() => setShowBulkUpload(true)}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Upload size={18} />
+            Bulk Registry Import
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-card">

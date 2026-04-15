@@ -270,6 +270,26 @@ router.get('/log/skip/download', requireAuth, (req, res) => {
   }
 });
 
+// GET /api/email/party/export — export all party emails as CSV
+router.get('/party/export', requireAuth, async (req, res) => {
+  try {
+    const partyEmails = await PartyEmail.find({}).lean();
+
+    const headers = 'partyCode,partyName,email,cc\n';
+    const rows = partyEmails.map(p => {
+      const email = p.email || '';
+      const cc = p.cc || '';
+      return `"${p.partyCode || ''}","${p.partyName || ''}","${email.replace(/"/g, '""')}","${cc.replace(/"/g, '""')}"`;
+    }).join('\n');
+
+    res.setHeader('Content-Disposition', 'attachment; filename=party_emails.csv');
+    res.setHeader('Content-Type', 'text/csv');
+    res.send(headers + rows);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // POST /api/email/retry — retry failed emails
 router.post('/retry', requireAuth, async (req, res) => {
   try {
