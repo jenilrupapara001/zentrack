@@ -12,7 +12,50 @@ const randomDelay = (minMs = 1000, maxMs = 5000) => {
   return new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// GET /api/email/logs — get all email logs
+// GET /api/email/logs/daily — get daily email log counts (must be before generic /logs)
+router.get('/logs/daily', requireAuth, async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const dailyLogs = await EmailLog.aggregate([
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          sent: { $sum: { $cond: [{ $eq: ["$status", "SENT"] }, 1, 0] } },
+          failed: { $sum: { $cond: [{ $eq: ["$status", "FAILED"] }, 1, 0] } },
+          total: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json({ success: true, data: dailyLogs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/email/logs/by-date/:date — get logs for specific date (must be before generic /logs)
+router.get('/logs/by-date/:date', requireAuth, async (req, res) => {
+  try {
+    const { date } = req.params;
+    const startDate = new Date(date);
+    const endDate = new Date(date);
+    endDate.setDate(endDate.getDate() + 1);
+
+    const logs = await EmailLog.find({
+      createdAt: { $gte: startDate, $lt: endDate }
+    }).sort({ createdAt: -1 }).lean();
+
+    res.json({ success: true, data: logs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/email/logs — get all email logs (must be last among /logs routes)
 router.get('/logs', requireAuth, async (req, res) => {
   try {
     const logs = await EmailLog.find({}).sort({ createdAt: -1 }).limit(100);
@@ -249,37 +292,37 @@ router.post('/retry', requireAuth, async (req, res) => {
 
     for (const log of failedLogs) {
       const partyCode = log.partyCode;
-      const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode);
-      const partyName = log.partyName || partyCode || 'Unknown Party';
+      // Get latest email from PartyEmail collection (not the stored one)
+      const partyEmailRecord = partyEmails.find(e => e.partyCode === partyCode || e.partyName === partyCode);
+      const partyName = partyEmailRecord?.partyName || log.partyName || partyCode || 'Unknown Party';
       
-      const ccEmails = log.cc || [];
+      // Use fresh emails from PartyEmail collection
+      const freshToEmails = partyEmailRecord?.email ? partyEmailRecord.email.split(',').map(e => e.trim()).filter(Boolean) : (log.emails || []);
+      const freshCcEmails = partyEmailRecord?.cc ? partyEmailRecord.cc.split(',').map(e => e.trim()).filter(Boolean) : [];
+      
+      // Log which emails we're using for debugging
+      console.log(`🔄 Retrying for ${partyCode} with fresh emails:`, { to: freshToEmails, cc: freshCcEmails });
+      
       const htmlBody = generateEmailBody(partyCode, [], [], partyEmails);
 
       try {
         const result = await gmailSender.sendMail({
-          to: log.emails,
-          cc: ccEmails,
+          to: freshToEmails,
+          cc: freshCcEmails,
           subject: `Payment Reconciliation for ${partyCode} - ${partyName}`,
           html: htmlBody
         });
 
         if (result.success) {
-          await EmailLog.create({
-            sessionId: log.sessionId,
-            status: 'SENT',
-            partyCode,
-            partyName,
-            emails: log.emails,
-            cc: ccEmails,
-          });
+          await EmailLog.findByIdAndUpdate(log._id, { status: 'SENT', error: '', emails: freshToEmails, cc: freshCcEmails });
           sentCount++;
-          results.push({ partyCode, partyName, status: 'sent' });
+          results.push({ partyCode, partyName, status: 'sent', logId: log._id });
         } else {
           throw new Error(result.error);
         }
       } catch (err) {
         failedCount++;
-        results.push({ partyCode, partyName, status: 'failed', error: err.message });
+        results.push({ partyCode, partyName, status: 'failed', error: err.message, logId: log._id });
       }
 
       await randomDelay(1000, 5000);
@@ -293,31 +336,6 @@ router.post('/retry', requireAuth, async (req, res) => {
         results,
       },
     });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// GET /api/email/logs/daily — get daily email log counts
-router.get('/logs/daily', requireAuth, async (req, res) => {
-  try {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const dailyLogs = await EmailLog.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          sent: { $sum: { $cond: [{ $eq: ["$status", "SENT"] }, 1, 0] } },
-          failed: { $sum: { $cond: [{ $eq: ["$status", "FAILED"] }, 1, 0] } },
-          total: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
-
-    res.json({ success: true, data: dailyLogs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

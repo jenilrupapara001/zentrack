@@ -69,6 +69,7 @@ export const sendEmails = (data) => api.post('/email/send', data);
 export const retryEmails = (logIds) => api.post('/email/retry', { logIds });
 export const getEmailLogs = () => api.get('/email/logs');
 export const getDailyEmailLogs = () => api.get('/email/logs/daily');
+export const getEmailLogsByDate = (date) => api.get(`/email/logs/by-date/${date}`);
 export const downloadEmailLogTxt = () =>
   api.get('/email/log/download', { responseType: 'blob' });
 export const downloadEmailLogExcel = () =>

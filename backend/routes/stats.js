@@ -85,7 +85,9 @@ router.get('/', requireAuth, async (req, res) => {
           totalParties,
           successRate: `${successRate}%`,
           pendingQueue: 0, // Conceptual for now
-          criticalFailures: failed
+          criticalFailures: failed,
+          totalSent: sent,
+          totalFailed: failed
         },
         chartData,
         recentActivity

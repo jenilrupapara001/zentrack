@@ -35,17 +35,31 @@ class GmailSender {
       // 3. Validate and filter email addresses
       const isValidEmail = (email) => {
         if (!email || typeof email !== 'string') return false;
-        const trimmed = email.trim();
+        const trimmed = email.trim().toLowerCase();
         if (!trimmed) return false;
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        // More robust email validation
+        const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
         return emailRegex.test(trimmed);
       };
 
-      const toEmails = Array.isArray(to) ? to.filter(isValidEmail) : (to ? [to] : []);
-      const ccEmails = cc ? (Array.isArray(cc) ? cc.filter(isValidEmail) : [cc].filter(isValidEmail)) : [];
+      const toArray = Array.isArray(to) ? to : (to ? [to] : []);
+      const ccArray = cc ? (Array.isArray(cc) ? cc : [cc]) : [];
+      
+      // Log invalid emails for debugging
+      const invalidTo = toArray.filter(e => !isValidEmail(e));
+      if (invalidTo.length > 0) {
+        console.warn('⚠️ Invalid To emails filtered:', invalidTo);
+      }
+      const invalidCc = ccArray.filter(e => !isValidEmail(e));
+      if (invalidCc.length > 0) {
+        console.warn('⚠️ Invalid CC emails filtered:', invalidCc);
+      }
+
+      const toEmails = toArray.filter(isValidEmail);
+      const ccEmails = ccArray.filter(isValidEmail);
 
       if (!toEmails.length) {
-        throw new Error('No valid recipient email addresses');
+        throw new Error('No valid recipient email addresses - all addresses were invalid');
       }
 
       // 4. Construct Multipart MIME Message (Enterprise Grade)

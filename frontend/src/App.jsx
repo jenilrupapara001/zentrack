@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import MainLayout from './components/layout/MainLayout';
@@ -11,6 +10,8 @@ import EmailSender from './pages/EmailSender';
 import LogsReporting from './pages/LogsReporting';
 import SettingsPage from './pages/SettingsPage';
 import { getAuthStatus } from './services/api';
+import { CustomToastContainer } from './components/CustomToast';
+import { Toaster } from 'react-hot-toast';
 
 import { RefreshProvider } from './context/RefreshContext';
 
@@ -20,7 +21,7 @@ export default function App() {
   useEffect(() => {
     // Identity verification with safe-abort timeout for cold-starts
     const authPromise = getAuthStatus();
-    const timeoutPromise = new Promise((resolve) => 
+    const timeoutPromise = new Promise((resolve) =>
       setTimeout(() => resolve({ data: { authenticated: false, isTimeout: true } }), 10000)
     );
 
@@ -56,20 +57,15 @@ export default function App() {
   return (
     <RefreshProvider>
       <BrowserRouter>
-        <Toaster 
-          position="top-right"
-          toastOptions={{
-            className: 'bg-white text-slate-900 border border-slate-200 shadow-premium rounded-2xl text-xs font-bold px-6 py-4',
-          }}
-        />
-        
+        <CustomToastContainer />
+
         <Routes>
           {/* Public Routes - Accessible Immediately */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={
             authenticated ? <Navigate to="/dashboard" replace /> : <LoginPage onLogin={() => setAuthenticated(true)} />
           } />
-          
+
           {/* Auth-Dependent Routes */}
           <Route path="*" element={
             checking ? (

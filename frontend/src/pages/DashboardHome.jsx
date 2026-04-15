@@ -30,6 +30,7 @@ import {
 } from 'recharts';
 import { getDashboardStats } from '../services/api';
 import { useRefresh } from '../context/RefreshContext';
+import DayWiseEmailLogs from '../components/DayWiseEmailLogs';
 
 const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -102,7 +103,7 @@ export default function DashboardHome() {
           <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest italic">Connection Interrupted</h3>
           <p className="text-[11px] font-medium text-slate-400 max-w-xs mx-auto">The protocol node is unreachable. This usually happens during backend cold-starts. Please wait 10s and retry.</p>
         </div>
-        <button 
+        <button
           onClick={fetchStats}
           className="btn-primary flex items-center gap-2 px-8"
         >
@@ -179,15 +180,15 @@ export default function DashboardHome() {
           colorClass="bg-green-600"
         />
         <StatCard
-          label="Pending Queue"
-          value={kpis.pendingQueue}
+          label="Total Sent"
+          value={(kpis.totalSent || 0).toLocaleString()}
           icon={ClockIcon}
           trend={0}
-          colorClass="bg-amber-600"
+          colorClass="bg-emerald-600"
         />
         <StatCard
-          label="Critical Failures"
-          value={kpis.criticalFailures}
+          label="Total Failed"
+          value={(kpis.totalFailed || 0).toLocaleString()}
           icon={AlertCircle}
           trend={0}
           colorClass="bg-red-600"
@@ -301,92 +302,24 @@ export default function DashboardHome() {
         </div>
       </div>
 
-      {/* Activity Table with High-Precision Styling */}
-      <div className="bg-white rounded-[40px] border border-slate-200 shadow-card overflow-hidden">
-        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-          <div>
-            <h3 className="font-black text-slate-900 uppercase text-xs tracking-[0.2em]">Recent Transmission Stream</h3>
-            <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">Live telemetry from protocol nodes</p>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-900 text-green-400 rounded-full border border-green-800 text-[9px] font-black tracking-widest uppercase">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            Live Feed
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50/50">
-                <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Entity Context</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Comm Channel</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] text-center">Protocol Status</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] text-right">Node ID</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {recentActivity.length === 0 ? (
-                <tr>
-                  <td colSpan="4" className="px-8 py-24 text-center">
-                    <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 border border-slate-100">
-                      <History size={32} className="text-slate-200" />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="text-sm font-black text-slate-900 uppercase tracking-widest italic">No Data Stream Detected</div>
-                      <p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">Connect to a live dispatch batch to view telemetry</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                recentActivity.map((log, i) => (
-                  <tr key={log._id} className="hover:bg-slate-50 transition-all duration-300 group">
-                    <td className="px-8 py-5">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-black text-slate-900 tracking-tight">{log.partyName}</span>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{log.partyCode}</span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                        <span className="text-[11px] font-bold text-slate-500 lowercase tracking-tight italic">
-                          {log.emails[0]}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5 text-center">
-                      <span className={cn(
-                        "text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest",
-                        log.status === 'SENT'
-                          ? "text-emerald-700 bg-emerald-50 border border-emerald-100"
-                          : "text-rose-700 bg-rose-50 border border-rose-100"
-                      )}>
-                        {log.status === 'SENT' ? 'Success' : 'Failure'}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5 text-right font-mono text-[10px] font-bold text-slate-400 tabular-nums">
-                      {log.sessionId.slice(-12).toUpperCase()}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      {/* Day-wise Email Logs */}
+      <div className="bg-white rounded-[40px] border border-slate-200 shadow-card overflow-hidden p-8">
+        <DayWiseEmailLogs />
       </div>
 
       {/* System Integrity Footer */}
       <div className="flex items-center justify-center gap-8 py-4 opacity-30 grayscale hover:opacity-100 transition-opacity duration-500">
         <div className="flex items-center gap-2">
-          <div className="w-1 h-8 bg-slate-300 rounded-full" />
-          <div className="text-[9px] font-black text-slate-500 tracking-[0.3em] uppercase underline decoration-2">Auto-Audit 2026</div>
+          {/* <div className="w-1 h-8 bg-slate-300 rounded-full" /> */}
+          {/* <div className="text-[9px] font-black text-slate-500 tracking-[0.3em] uppercase underline decoration-2">Auto-Audit 2026</div> */}
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-1 h-8 bg-slate-300 rounded-full" />
-          <div className="text-[9px] font-black text-slate-500 tracking-[0.3em] uppercase underline decoration-2">Protocol Verified</div>
+          {/* <div className="w-1 h-8 bg-slate-300 rounded-full" /> */}
+          {/* <div className="text-[9px] font-black text-slate-500 tracking-[0.3em] uppercase underline decoration-2">Protocol Verified</div> */}
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-1 h-8 bg-slate-300 rounded-full" />
-          <div className="text-[9px] font-black text-slate-500 tracking-[0.3em] uppercase underline decoration-2">Node Secure</div>
+          {/* <div className="w-1 h-8 bg-slate-300 rounded-full" /> */}
+          {/* <div className="text-[9px] font-black text-slate-500 tracking-[0.3em] uppercase underline decoration-2">Node Secure</div> */}
         </div>
       </div>
     </div>

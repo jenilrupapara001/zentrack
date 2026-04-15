@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import { showToast } from '../components/CustomToast';
 import {
   Mail,
   KeyRound,
@@ -20,7 +20,8 @@ import {
   Settings,
   Plus,
   RefreshCcw,
-  Trash2
+  Trash2,
+  History
 } from 'lucide-react';
 import api, {
   sendEmails,
@@ -31,6 +32,7 @@ import api, {
   getEmailLogs
 } from '../services/api';
 import { useRefresh } from '../context/RefreshContext';
+import DayWiseEmailLogs from '../components/DayWiseEmailLogs';
 
 export default function EmailSender({ matchedResults: propResults }) {
   const [searchParams] = useSearchParams();
@@ -83,64 +85,66 @@ export default function EmailSender({ matchedResults: propResults }) {
   const handleSendBatch = async () => {
     if (!gmailStatus.connected) return toast.error('Enterprise Dispatcher Offline: Connect Gmail in Settings');
     if (!activeResults.length) return toast.error('No results to broadcast');
-    
-    if (!window.confirm(`ZenTrack will now broadcast ${activeResults.length} reconciliation emails via the Enterprise Gmail API. Proceed?`)) return;
+
+    const confirmed = window.confirm(`ZenTrack will now broadcast ${activeResults.length} reconciliation emails via the Enterprise Gmail API. Proceed?`);
+    if (!confirmed) return;
 
     setSending(true);
-    const toastId = toast.loading('Initializing Enterprise Dispatcher...');
+    const toastId = toast.loading('Starting email dispatch...');
+
     try {
-      // 1. Verify Active Hook
       await api.post('/email/verify');
-      
-      toast.success('Secure Handshake Established', { id: toastId });
-      
-      // 2. Start broadcast
-      const res = await sendEmails({
-        matchedResults: activeResults
-      });
-      
+
+      const res = await sendEmails({ matchedResults: activeResults });
+
       if (res.data.success) {
         const { sentCount, failedCount } = res.data.data;
         if (sentCount > 0) {
-          toast.success(`✅ Sent: ${sentCount} emails delivered successfully!`);
+          showToast({ type: 'success', title: '✅ Sent!', message: `${sentCount} email(s) delivered successfully`, duration: 4000 });
         }
         if (failedCount > 0) {
-          toast.error(`❌ Failed: ${failedCount} emails could not be sent`);
+          showToast({ type: 'error', title: '❌ Failed', message: `${failedCount} email(s) failed to send`, duration: 5000 });
+        }
+        if (sentCount === 0 && failedCount === 0) {
+          showToast({ type: 'info', title: 'Info', message: 'No emails to process', duration: 3000 });
         }
         await fetchInitialData();
       }
-
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Dispatcher Handshake failed. Check infrastructure health.', { id: toastId });
+      showToast({ type: 'error', title: 'Error', message: err.response?.data?.message || err.message, duration: 5000 });
+    } finally {
       setSending(false);
     }
   };
 
   const handleRetryFailed = async () => {
     const failedLogs = emailLogs.filter(l => l.status === 'FAILED');
-    if (!failedLogs.length) return toast.error('No failed emails to retry');
-    
-    if (!window.confirm(`Retry sending ${failedLogs.length} failed emails?`)) return;
+    if (!failedLogs.length) {
+      showToast({ type: 'info', title: 'Info', message: 'No failed emails to retry', duration: 3000 });
+      return;
+    }
+
+    const confirmed = window.confirm(`Retry sending ${failedLogs.length} failed email(s)?`);
+    if (!confirmed) return;
 
     setRetrying(true);
-    const toastId = toast.loading('Retrying failed emails...');
-    
+
     try {
       const { retryEmails } = await import('../services/api');
       const res = await retryEmails(failedLogs.map(l => l._id));
-      
+
       if (res.data.success) {
         const { sentCount, failedCount } = res.data.data;
         if (sentCount > 0) {
-          toast.success(`✅ Retry Success: ${sentCount} emails resent!`, { id: toastId });
+          showToast({ type: 'success', title: '✅ Retry Success!', message: `${sentCount} email(s) resent successfully`, duration: 4000 });
         }
         if (failedCount > 0) {
-          toast.error(`❌ Still Failed: ${failedCount} emails`, { id: toastId });
+          showToast({ type: 'error', title: '❌ Still Failed', message: `${failedCount} email(s) still failed`, duration: 5000 });
         }
         await fetchInitialData();
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Retry failed', { id: toastId });
+      showToast({ type: 'error', title: 'Error', message: err.response?.data?.message || err.message, duration: 5000 });
     } finally {
       setRetrying(false);
     }
@@ -298,58 +302,61 @@ export default function EmailSender({ matchedResults: propResults }) {
                   </p>
                 </div>
               )}
-            {/* Email Logs Section */}
-        {emailLogs.length > 0 && (
-          <div className="mt-8">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-slate-800">Transmission Logs</h3>
-              <button
-                onClick={handleRetryFailed}
-                disabled={retrying || !emailLogs.some(l => l.status === 'FAILED')}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-100 transition-colors disabled:opacity-50"
-              >
-                <RefreshCcw size={14} className={retrying ? 'animate-spin' : ''} />
-                Retry Failed ({emailLogs.filter(l => l.status === 'FAILED').length})
-              </button>
             </div>
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-4 py-3 font-bold text-slate-600">Party</th>
-                    <th className="px-4 py-3 font-bold text-slate-600">Emails</th>
-                    <th className="px-4 py-3 font-bold text-slate-600">Status</th>
-                    <th className="px-4 py-3 font-bold text-slate-600">Date</th>
-                    <th className="px-4 py-3 font-bold text-slate-600">Error</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {emailLogs.slice(0, 20).map((log) => (
-                    <tr key={log._id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">{log.partyName || log.partyCode}</td>
-                      <td className="px-4 py-3 text-slate-500 text-xs">{log.emails?.join(', ')}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                          log.status === 'SENT' 
-                            ? 'bg-green-50 text-green-700' 
-                            : 'bg-red-50 text-red-700'
-                        }`}>
-                          {log.status === 'SENT' ? 'SENT' : 'FAILED'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-400 text-xs">
-                        {new Date(log.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3 text-red-600 text-xs">
-                        {log.error || '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+            <div className="p-8 border-t border-slate-100">
+              <DayWiseEmailLogs />
             </div>
+
+            {emailLogs.length > 0 && (
+              <div className="p-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-slate-800">Transmission Logs</h3>
+                  <button
+                    onClick={handleRetryFailed}
+                    disabled={retrying || !emailLogs.some(l => l.status === 'FAILED')}
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-100 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCcw size={14} className={retrying ? 'animate-spin' : ''} />
+                    Retry Failed ({emailLogs.filter(l => l.status === 'FAILED').length})
+                  </button>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 font-bold text-slate-600">Party</th>
+                        <th className="px-4 py-3 font-bold text-slate-600">Emails</th>
+                        <th className="px-4 py-3 font-bold text-slate-600">Status</th>
+                        <th className="px-4 py-3 font-bold text-slate-600">Date</th>
+                        <th className="px-4 py-3 font-bold text-slate-600">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {emailLogs.slice(0, 20).map((log) => (
+                        <tr key={log._id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3">{log.partyName || log.partyCode}</td>
+                          <td className="px-4 py-3 text-slate-500 text-xs">{log.emails?.join(', ')}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${log.status === 'SENT' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                              {log.status === 'SENT' ? 'SENT' : 'FAILED'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-400 text-xs">
+                            {new Date(log.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3 text-red-600 text-xs">
+                            {log.error || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

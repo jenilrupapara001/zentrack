@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import toast from 'react-hot-toast';
+import { showToast } from '../components/CustomToast';
 import { 
   FileText, 
   FileSpreadsheet, 
@@ -18,7 +18,8 @@ import {
   downloadEmailLogTxt, 
   downloadEmailLogExcel, 
   triggerDownload, 
-  getEmailLogs
+  getEmailLogs,
+  retryEmails
 } from '../services/api';
 import { useRefresh } from '../context/RefreshContext';
 
@@ -27,6 +28,7 @@ export default function LogsReporting() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [retrying, setRetrying] = useState(null);
   const [isLive, setIsLive] = useState(true);
   const { refreshKey } = useRefresh();
   const [lastFetched, setLastFetched] = useState(new Date());
@@ -42,8 +44,25 @@ export default function LogsReporting() {
       }, 3000);
     }
     
+    // Refresh on window focus
+    const handleFocus = () => {
+      pollLogs();
+    };
+    
+    // Refresh on page visibility
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        pollLogs();
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    
     return () => {
       if (interval) clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [refreshKey, isLive]);
 
@@ -54,7 +73,7 @@ export default function LogsReporting() {
       setLogs(res.data.data || []);
       setLastFetched(new Date());
     } catch {
-      toast.error('Failed to retrieve intelligence audit');
+      showToast({ type: 'error', title: 'Error', message: 'Failed to retrieve logs', duration: 4000 });
     } finally {
       setLoading(false);
     }
@@ -70,12 +89,27 @@ export default function LogsReporting() {
     }
   };
 
+  const handleRetrySingle = async (logId) => {
+    setRetrying(logId);
+    try {
+      const res = await retryEmails([logId]);
+      if (res.data.success) {
+        showToast({ type: 'success', title: '✅ Retry Success!', message: 'Email resent successfully', duration: 4000 });
+        await fetchLogs();
+      }
+    } catch (err) {
+      showToast({ type: 'error', title: 'Error', message: err.response?.data?.message || err.message, duration: 5000 });
+    } finally {
+      setRetrying(null);
+    }
+  };
+
   const handleTxt = async () => {
     try {
       const res = await downloadEmailLogTxt();
       triggerDownload(res.data, 'ZenTrack_Audit_Log.txt');
     } catch {
-      toast.error('Log trace not generated yet');
+      showToast({ type: 'warning', title: 'Warning', message: 'Log trace not generated yet', duration: 3000 });
     }
   };
 
@@ -84,7 +118,7 @@ export default function LogsReporting() {
       const res = await downloadEmailLogExcel();
       triggerDownload(res.data, 'ZenTrack_Analytical_Report.xlsx');
     } catch {
-      toast.error('Report context missing');
+      showToast({ type: 'warning', title: 'Warning', message: 'Report context missing', duration: 3000 });
     }
   };
 
@@ -148,14 +182,22 @@ export default function LogsReporting() {
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">
                   {isLive ? 'Live Monitoring' : 'Monitoring Paused'}
                 </span>
-                <button 
+<button 
                   onClick={() => setIsLive(!isLive)}
                   className="text-[10px] font-bold text-primary-600 hover:text-primary-700 underline underline-offset-4"
                 >
                   {isLive ? 'Pause' : 'Resume'}
                 </button>
-             </div>
-          </div>
+                <button 
+                  onClick={() => {
+                    fetchLogs();
+                  }}
+                  className="text-[10px] font-bold text-primary-600 hover:text-primary-700 underline underline-offset-4"
+                >
+                  Refresh
+                </button>
+              </div>
+           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
             <div className="overflow-x-auto">
@@ -201,13 +243,17 @@ export default function LogsReporting() {
                              {log.error || '-'}
                            </div>
                         </td>
-                        <td className="px-6 py-4 text-right">
-                           {log.status === 'FAILED' && (
-                             <button className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
-                               <RefreshCcw size={16} />
-                             </button>
-                           )}
-                        </td>
+<td className="px-6 py-4 text-right">
+                            {log.status === 'FAILED' && (
+                              <button 
+                                onClick={() => handleRetrySingle(log._id)}
+                                disabled={retrying === log._id}
+                                className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors disabled:opacity-50"
+                              >
+                                {retrying === log._id ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />}
+                              </button>
+                            )}
+                         </td>
                       </tr>
                     ))}
                   </tbody>
