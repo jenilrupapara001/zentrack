@@ -2,7 +2,7 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { PartyEmail, EmailLog, GoogleAuth } = require('../models');
+const { PartyEmail, EmailLog, GoogleAuth, ReconciliationSession } = require('../models');
 const { generateEmailBody } = require('../services/emailGenerator');
 const gmailSender = require('../services/gmailSender');
 
@@ -22,7 +22,7 @@ router.get('/logs/daily', requireAuth, async (req, res) => {
       { $match: { createdAt: { $gte: thirtyDaysAgo } } },
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          _id: { $dateToString: { format: "%d-%m-%Y", date: "$createdAt" } },
           sent: { $sum: { $cond: [{ $eq: ["$status", "SENT"] }, 1, 0] } },
           failed: { $sum: { $cond: [{ $eq: ["$status", "FAILED"] }, 1, 0] } },
           total: { $sum: 1 }
@@ -130,6 +130,8 @@ router.post('/send', requireAuth, async (req, res) => {
             partyName,
             emails: entry.emails,
             cc: ccEmails,
+            payments: entry.payments,
+            debits: entry.debits,
           });
         } else {
           throw new Error(result.error);
@@ -145,7 +147,10 @@ router.post('/send', requireAuth, async (req, res) => {
           partyCode,
           partyName,
           emails: entry.emails,
+          cc: ccEmails,
           error: err.message,
+          payments: entry.payments,
+          debits: entry.debits,
         });
       }
 
@@ -281,7 +286,7 @@ router.post('/retry', requireAuth, async (req, res) => {
 
     const partyEmails = await PartyEmail.find({}).lean();
     const failedLogs = await EmailLog.find({ _id: { $in: logIds }, status: 'FAILED' });
-    
+
     if (!failedLogs.length) {
       return res.status(400).json({ success: false, message: 'No failed emails found to retry' });
     }
@@ -295,15 +300,31 @@ router.post('/retry', requireAuth, async (req, res) => {
       // Get latest email from PartyEmail collection (not the stored one)
       const partyEmailRecord = partyEmails.find(e => e.partyCode === partyCode || e.partyName === partyCode);
       const partyName = partyEmailRecord?.partyName || log.partyName || partyCode || 'Unknown Party';
-      
+
       // Use fresh emails from PartyEmail collection
       const freshToEmails = partyEmailRecord?.email ? partyEmailRecord.email.split(',').map(e => e.trim()).filter(Boolean) : (log.emails || []);
-      const freshCcEmails = partyEmailRecord?.cc ? partyEmailRecord.cc.split(',').map(e => e.trim()).filter(Boolean) : [];
+      const freshCcEmails = partyEmailRecord?.cc ? partyEmailRecord.cc.split(',').map(e => e.trim()).filter(Boolean) : (log.cc || []);
+
+      // Use stored payment data or fetch from session
+      let payments = log.payments && log.payments.length > 0 ? log.payments : [];
+      let debits = log.debits && log.debits.length > 0 ? log.debits : [];
       
+      // If no payment data stored, try to fetch from the latest session
+      if (payments.length === 0 && partyCode) {
+        const session = await ReconciliationSession.findOne({}).sort({ createdAt: -1 });
+        if (session && session.matchedResults) {
+          const partyData = session.matchedResults.find(m => m.partyCode === partyCode || m.partyName === partyCode);
+          if (partyData) {
+            payments = partyData.payments || [];
+            debits = partyData.debits || [];
+          }
+        }
+      }
+
       // Log which emails we're using for debugging
-      console.log(`🔄 Retrying for ${partyCode} with fresh emails:`, { to: freshToEmails, cc: freshCcEmails });
-      
-      const htmlBody = generateEmailBody(partyCode, [], [], partyEmails);
+      console.log(`🔄 Retrying for ${partyCode} with fresh emails:`, { to: freshToEmails, cc: freshCcEmails, payments: payments.length });
+
+      const htmlBody = generateEmailBody(partyCode, payments, debits, partyEmails);
 
       try {
         const result = await gmailSender.sendMail({

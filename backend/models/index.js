@@ -24,6 +24,8 @@ const emailLogSchema = new mongoose.Schema({
   error: { type: String, default: '' },
   sentAt: { type: Date, default: Date.now },
   batchId: { type: mongoose.Schema.Types.ObjectId, ref: 'ReconciliationSession' },
+  payments: { type: mongoose.Schema.Types.Mixed, default: null },
+  debits: { type: mongoose.Schema.Types.Mixed, default: null },
 }, { timestamps: true });
 
 const EmailLog = mongoose.model('EmailLog', emailLogSchema);
