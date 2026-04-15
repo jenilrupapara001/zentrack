@@ -66,7 +66,9 @@ export const downloadPartywiseExcel = () =>
 
 // ── Email ─────────────────────────────────────────────────────────────────────
 export const sendEmails = (data) => api.post('/email/send', data);
+export const retryEmails = (logIds) => api.post('/email/retry', { logIds });
 export const getEmailLogs = () => api.get('/email/logs');
+export const getDailyEmailLogs = () => api.get('/email/logs/daily');
 export const downloadEmailLogTxt = () =>
   api.get('/email/log/download', { responseType: 'blob' });
 export const downloadEmailLogExcel = () =>

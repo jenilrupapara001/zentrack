@@ -32,12 +32,27 @@ class GmailSender {
 
       const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
 
-      // 3. Construct Multipart MIME Message (Enterprise Grade)
-      // Using MailComposer ensures correct boundary management for attachments
+      // 3. Validate and filter email addresses
+      const isValidEmail = (email) => {
+        if (!email || typeof email !== 'string') return false;
+        const trimmed = email.trim();
+        if (!trimmed) return false;
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(trimmed);
+      };
+
+      const toEmails = Array.isArray(to) ? to.filter(isValidEmail) : (to ? [to] : []);
+      const ccEmails = cc ? (Array.isArray(cc) ? cc.filter(isValidEmail) : [cc].filter(isValidEmail)) : [];
+
+      if (!toEmails.length) {
+        throw new Error('No valid recipient email addresses');
+      }
+
+      // 4. Construct Multipart MIME Message (Enterprise Grade)
       const mailOptions = {
         from: authRecord.email,
-        to: Array.isArray(to) ? to.join(', ') : to,
-        cc: cc ? (Array.isArray(cc) ? cc.join(', ') : cc) : undefined,
+        to: toEmails.join(', '),
+        cc: ccEmails.length > 0 ? ccEmails.join(', ') : undefined,
         subject: subject,
         text: text,
         html: html,
@@ -47,13 +62,13 @@ class GmailSender {
       const composer = new MailComposer(mailOptions);
       const messageBuffer = await composer.compile().build();
       
-      // 4. Base64URL Encode for Google API Requirements
+      // 5. Base64URL Encode for Google API Requirements
       const encodedMessage = messageBuffer.toString('base64')
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
         .replace(/=+$/, '');
 
-      // 5. High-Priority Dispatch
+      // 6. High-Priority Dispatch
       const res = await gmail.users.messages.send({
         userId: 'me',
         requestBody: {

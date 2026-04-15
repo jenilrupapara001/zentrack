@@ -222,4 +222,105 @@ router.get('/log/skip/download', requireAuth, (req, res) => {
   }
 });
 
+// POST /api/email/retry — retry failed emails
+router.post('/retry', requireAuth, async (req, res) => {
+  try {
+    const { logIds } = req.body;
+
+    if (!logIds || !Array.isArray(logIds) || !logIds.length) {
+      return res.status(400).json({ success: false, message: 'No failed log IDs provided' });
+    }
+
+    const authRecord = await GoogleAuth.findOne({ isActive: true });
+    if (!authRecord) {
+      return res.status(400).json({ success: false, message: 'Enterprise Dispatcher offline: No Google account connected.' });
+    }
+
+    const partyEmails = await PartyEmail.find({}).lean();
+    const failedLogs = await EmailLog.find({ _id: { $in: logIds }, status: 'FAILED' });
+    
+    if (!failedLogs.length) {
+      return res.status(400).json({ success: false, message: 'No failed emails found to retry' });
+    }
+
+    let sentCount = 0;
+    let failedCount = 0;
+    const results = [];
+
+    for (const log of failedLogs) {
+      const partyCode = log.partyCode;
+      const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode);
+      const partyName = log.partyName || partyCode || 'Unknown Party';
+      
+      const ccEmails = log.cc || [];
+      const htmlBody = generateEmailBody(partyCode, [], [], partyEmails);
+
+      try {
+        const result = await gmailSender.sendMail({
+          to: log.emails,
+          cc: ccEmails,
+          subject: `Payment Reconciliation for ${partyCode} - ${partyName}`,
+          html: htmlBody
+        });
+
+        if (result.success) {
+          await EmailLog.create({
+            sessionId: log.sessionId,
+            status: 'SENT',
+            partyCode,
+            partyName,
+            emails: log.emails,
+            cc: ccEmails,
+          });
+          sentCount++;
+          results.push({ partyCode, partyName, status: 'sent' });
+        } else {
+          throw new Error(result.error);
+        }
+      } catch (err) {
+        failedCount++;
+        results.push({ partyCode, partyName, status: 'failed', error: err.message });
+      }
+
+      await randomDelay(1000, 5000);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        sentCount,
+        failedCount,
+        results,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/email/logs/daily — get daily email log counts
+router.get('/logs/daily', requireAuth, async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const dailyLogs = await EmailLog.aggregate([
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          sent: { $sum: { $cond: [{ $eq: ["$status", "SENT"] }, 1, 0] } },
+          failed: { $sum: { $cond: [{ $eq: ["$status", "FAILED"] }, 1, 0] } },
+          total: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json({ success: true, data: dailyLogs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;

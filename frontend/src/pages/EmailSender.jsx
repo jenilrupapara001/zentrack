@@ -18,14 +18,17 @@ import {
   ChevronDown,
   Loader2,
   Settings,
-  Plus
+  Plus,
+  RefreshCcw,
+  Trash2
 } from 'lucide-react';
 import api, {
   sendEmails,
   downloadEmailLogTxt,
   downloadEmailLogExcel,
   triggerDownload,
-  getSessionById
+  getSessionById,
+  getEmailLogs
 } from '../services/api';
 import { useRefresh } from '../context/RefreshContext';
 
@@ -40,6 +43,8 @@ export default function EmailSender({ matchedResults: propResults }) {
   const [showPreview, setShowPreview] = useState(true);
   const [loading, setLoading] = useState(false);
   const [gmailStatus, setGmailStatus] = useState({ connected: false, email: null });
+  const [emailLogs, setEmailLogs] = useState([]);
+  const [retrying, setRetrying] = useState(false);
 
   // Determine active results
   const activeResults = sessionData?.matchedResults || propResults || [];
@@ -51,9 +56,10 @@ export default function EmailSender({ matchedResults: propResults }) {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [gmailRes, sessionRes] = await Promise.all([
+      const [gmailRes, sessionRes, logsRes] = await Promise.all([
         api.get('/settings/gmail'),
-        sessionId ? getSessionById(sessionId) : Promise.resolve({ data: { success: true, data: null } })
+        sessionId ? getSessionById(sessionId) : Promise.resolve({ data: { success: true, data: null } }),
+        getEmailLogs()
       ]);
 
       if (gmailRes.data) {
@@ -62,6 +68,10 @@ export default function EmailSender({ matchedResults: propResults }) {
 
       if (sessionRes.data.data) {
         setSessionData(sessionRes.data.data);
+      }
+
+      if (logsRes.data?.data) {
+        setEmailLogs(logsRes.data.data);
       }
     } catch {
       toast.error('Could not initialize enterprise dispatch context');
@@ -85,25 +95,54 @@ export default function EmailSender({ matchedResults: propResults }) {
       toast.success('Secure Handshake Established', { id: toastId });
       
       // 2. Start broadcast
-      sendEmails({
+      const res = await sendEmails({
         matchedResults: activeResults
-      }).then(res => {
-        if (res.data.success) {
-          toast.success(`Enterprise Dispatch Complete: ${res.data.data.sentCount} sent successfully.`);
-        }
-      }).catch(err => {
-        console.error('Background transmission error:', err);
-        toast.error('A critical error occurred during background transmission.');
       });
-
-      // 3. Redirect to logs to see realtime progress
-      setTimeout(() => {
-        navigate('/logs');
-      }, 1500);
+      
+      if (res.data.success) {
+        const { sentCount, failedCount } = res.data.data;
+        if (sentCount > 0) {
+          toast.success(`✅ Sent: ${sentCount} emails delivered successfully!`);
+        }
+        if (failedCount > 0) {
+          toast.error(`❌ Failed: ${failedCount} emails could not be sent`);
+        }
+        await fetchInitialData();
+      }
 
     } catch (err) {
       toast.error(err.response?.data?.message || 'Dispatcher Handshake failed. Check infrastructure health.', { id: toastId });
       setSending(false);
+    }
+  };
+
+  const handleRetryFailed = async () => {
+    const failedLogs = emailLogs.filter(l => l.status === 'FAILED');
+    if (!failedLogs.length) return toast.error('No failed emails to retry');
+    
+    if (!window.confirm(`Retry sending ${failedLogs.length} failed emails?`)) return;
+
+    setRetrying(true);
+    const toastId = toast.loading('Retrying failed emails...');
+    
+    try {
+      const { retryEmails } = await import('../services/api');
+      const res = await retryEmails(failedLogs.map(l => l._id));
+      
+      if (res.data.success) {
+        const { sentCount, failedCount } = res.data.data;
+        if (sentCount > 0) {
+          toast.success(`✅ Retry Success: ${sentCount} emails resent!`, { id: toastId });
+        }
+        if (failedCount > 0) {
+          toast.error(`❌ Still Failed: ${failedCount} emails`, { id: toastId });
+        }
+        await fetchInitialData();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Retry failed', { id: toastId });
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -259,9 +298,58 @@ export default function EmailSender({ matchedResults: propResults }) {
                   </p>
                 </div>
               )}
+            {/* Email Logs Section */}
+        {emailLogs.length > 0 && (
+          <div className="mt-8">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-slate-800">Transmission Logs</h3>
+              <button
+                onClick={handleRetryFailed}
+                disabled={retrying || !emailLogs.some(l => l.status === 'FAILED')}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-100 transition-colors disabled:opacity-50"
+              >
+                <RefreshCcw size={14} className={retrying ? 'animate-spin' : ''} />
+                Retry Failed ({emailLogs.filter(l => l.status === 'FAILED').length})
+              </button>
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 font-bold text-slate-600">Party</th>
+                    <th className="px-4 py-3 font-bold text-slate-600">Emails</th>
+                    <th className="px-4 py-3 font-bold text-slate-600">Status</th>
+                    <th className="px-4 py-3 font-bold text-slate-600">Date</th>
+                    <th className="px-4 py-3 font-bold text-slate-600">Error</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {emailLogs.slice(0, 20).map((log) => (
+                    <tr key={log._id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3">{log.partyName || log.partyCode}</td>
+                      <td className="px-4 py-3 text-slate-500 text-xs">{log.emails?.join(', ')}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                          log.status === 'SENT' 
+                            ? 'bg-green-50 text-green-700' 
+                            : 'bg-red-50 text-red-700'
+                        }`}>
+                          {log.status === 'SENT' ? 'SENT' : 'FAILED'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">
+                        {new Date(log.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-red-600 text-xs">
+                        {log.error || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
