@@ -58,6 +58,7 @@ export default function App() {
     <RefreshProvider>
       <BrowserRouter>
         <CustomToastContainer />
+        <Toaster position="top-right" reverseOrder={false} />
 
         <Routes>
           {/* Public Routes - Accessible Immediately */}
