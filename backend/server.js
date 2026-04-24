@@ -2,7 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
-const mongoose = require('mongoose');
+const { connectDB } = require('./config/database');
+
 const path = require('path');
 
 const authRoutes = require('./routes/auth');
@@ -15,10 +16,8 @@ const statsRoutes = require('./routes/stats');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/payment_reconciliation')
-.then(() => console.log('✅ MongoDB connected'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+// SQL Server Connection
+connectDB();
 
 const isProduction = process.env.NODE_ENV === 'production';
 

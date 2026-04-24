@@ -1,59 +1,145 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
+
+// Helper for JSON columns in MSSQL (v6 doesn't always map JSON to TEXT automatically for all MSSQL versions)
+const jsonColumn = (fieldName) => ({
+  type: DataTypes.TEXT,
+  get() {
+    const value = this.getDataValue(fieldName);
+    try {
+      return value ? JSON.parse(value) : null;
+    } catch (e) {
+      return value;
+    }
+  },
+  set(value) {
+    this.setDataValue(fieldName, value ? JSON.stringify(value) : null);
+  },
+});
 
 // ─── Party Email Model ─────────────────────────────────────────────────────────
-const partyEmailSchema = new mongoose.Schema({
-  partyCode: { type: String, default: '' },
-  partyName: { type: String, required: true, trim: true },
-  email: { type: String, default: '' },
-  cc: { type: String, default: '' },
-}, { timestamps: true });
-
-partyEmailSchema.index({ partyName: 1 });
-partyEmailSchema.index({ partyCode: 1 });
-
-const PartyEmail = mongoose.model('PartyEmail', partyEmailSchema);
-
-// ─── Email Log Model ───────────────────────────────────────────────────────────
-const emailLogSchema = new mongoose.Schema({
-  sessionId: { type: String, required: true },
-  status: { type: String, enum: ['SENT', 'FAILED', 'SKIPPED'], required: true },
-  partyCode: { type: String, default: '' },
-  partyName: { type: String, default: '' },
-  emails: { type: [String], default: [] },
-  cc: { type: [String], default: [] },
-  error: { type: String, default: '' },
-  sentAt: { type: Date, default: Date.now },
-  batchId: { type: mongoose.Schema.Types.ObjectId, ref: 'ReconciliationSession' },
-  payments: { type: mongoose.Schema.Types.Mixed, default: null },
-  debits: { type: mongoose.Schema.Types.Mixed, default: null },
-}, { timestamps: true });
-
-const EmailLog = mongoose.model('EmailLog', emailLogSchema);
+const PartyEmail = sequelize.define('PartyEmail', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  partyCode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  partyName: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: true,
+    },
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  cc: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+}, {
+  timestamps: true,
+  indexes: [
+    { fields: ['partyName'] },
+    { fields: ['partyCode'] },
+  ],
+});
 
 // ─── Reconciliation Session Model ─────────────────────────────────────────────
-const reconciliationSessionSchema = new mongoose.Schema({
-  filename: { type: String },
-  uploadedAt: { type: Date, default: Date.now },
-  matchedResults: { type: mongoose.Schema.Types.Mixed, default: [] },
-  skipLogLines: { type: [String], default: [] },
-  partiesWithoutEmail: { type: mongoose.Schema.Types.Mixed, default: [] },
-  summary: {
-    matched: { type: Number, default: 0 },
-    skipped: { type: Number, default: 0 },
-    withoutEmail: { type: Number, default: 0 }
+const ReconciliationSession = sequelize.define('ReconciliationSession', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
   },
-  status: { type: String, enum: ['pending', 'processed', 'emailed'], default: 'pending' },
-}, { timestamps: true });
+  filename: {
+    type: DataTypes.STRING,
+  },
+  uploadedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+  },
+  matchedResults: jsonColumn('matchedResults'),
+  skipLogLines: jsonColumn('skipLogLines'),
+  partiesWithoutEmail: jsonColumn('partiesWithoutEmail'),
+  summary: jsonColumn('summary'),
+  status: {
+    type: DataTypes.ENUM('pending', 'processed', 'emailed'),
+    defaultValue: 'pending',
+  },
+}, {
+  timestamps: true,
+});
 
-const ReconciliationSession = mongoose.model('ReconciliationSession', reconciliationSessionSchema);
+// ─── Email Log Model ───────────────────────────────────────────────────────────
+const EmailLog = sequelize.define('EmailLog', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  sessionId: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  status: {
+    type: DataTypes.ENUM('SENT', 'FAILED', 'SKIPPED'),
+    allowNull: false,
+  },
+  partyCode: {
+    type: DataTypes.STRING,
+  },
+  partyName: {
+    type: DataTypes.STRING,
+  },
+  emails: jsonColumn('emails'),
+  cc: jsonColumn('cc'),
+  error: {
+    type: DataTypes.TEXT,
+    defaultValue: '',
+  },
+  sentAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+  },
+  payments: jsonColumn('payments'),
+  debits: jsonColumn('debits'),
+}, {
+  timestamps: true,
+});
+
+// Associations
+EmailLog.belongsTo(ReconciliationSession, { as: 'batch', foreignKey: 'batchId' });
+ReconciliationSession.hasMany(EmailLog, { as: 'emailLogs', foreignKey: 'batchId' });
 
 // ─── Google Auth Model ─────────────────────────────────────────────────────────
-const googleAuthSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  refreshToken: { type: String, required: true },
-  isActive: { type: Boolean, default: true },
-}, { timestamps: true });
+const GoogleAuth = sequelize.define('GoogleAuth', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  refreshToken: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+}, {
+  timestamps: true,
+});
 
-const GoogleAuth = mongoose.model('GoogleAuth', googleAuthSchema);
-
-module.exports = { PartyEmail, EmailLog, ReconciliationSession, GoogleAuth };
+module.exports = { PartyEmail, EmailLog, ReconciliationSession, GoogleAuth, sequelize };

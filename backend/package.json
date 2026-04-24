@@ -17,10 +17,13 @@
     "express-session": "^1.17.3",
     "googleapis": "^171.4.0",
     "json2csv": "^6.0.0-alpha.2",
-    "mongoose": "^8.0.0",
+    "mongoose": "^9.5.0",
+    "mssql": "^12.5.0",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.7",
     "resend": "^6.10.0",
+    "sequelize": "^6.37.8",
+    "tedious": "^19.2.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

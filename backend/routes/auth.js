@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { google } = require('googleapis');
 const router = express.Router();
+const { GoogleAuth } = require('../models');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -49,7 +50,6 @@ router.get('/status', (req, res) => {
 });
 
 // ─── Google OAuth (Gmail API) ────────────────────────────────────────────────
-const { GoogleAuth } = require('../models');
 
 // GET /api/auth/google
 router.get('/google', (req, res) => {
@@ -77,15 +77,19 @@ router.get('/google/callback', async (req, res) => {
     const email = userInfo.data.email;
 
     if (tokens.refresh_token) {
-      await GoogleAuth.findOneAndUpdate(
-        { email },
-        { refreshToken: tokens.refresh_token, isActive: true },
-        { upsert: true, new: true }
-      );
+      const [record, created] = await GoogleAuth.findOrCreate({
+        where: { email },
+        defaults: { refreshToken: tokens.refresh_token, isActive: true }
+      });
+      
+      if (!created) {
+        await record.update({ refreshToken: tokens.refresh_token, isActive: true });
+      }
+      
       console.log(`✅ DISPATCH HUB: Gmail authorized for ${email}`);
     } else {
       // If we didn't get a refresh token, check if we already have one
-      const existing = await GoogleAuth.findOne({ email });
+      const existing = await GoogleAuth.findOne({ where: { email } });
       if (!existing) {
         throw new Error('No refresh token received. Revoke access and try again.');
       }

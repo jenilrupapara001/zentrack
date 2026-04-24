@@ -12,7 +12,7 @@ const { requireAuth } = require('../middleware/auth');
 // GET /api/settings/gmail — Get connected gmail status
 router.get('/gmail', requireAuth, async (req, res) => {
   try {
-    const googleAuth = await GoogleAuth.findOne({ isActive: true });
+    const googleAuth = await GoogleAuth.findOne({ where: { isActive: true } });
     res.json({ 
       success: true, 
       connected: !!googleAuth,
@@ -26,7 +26,7 @@ router.get('/gmail', requireAuth, async (req, res) => {
 // DELETE /api/settings/gmail — Disconnect gmail account
 router.delete('/gmail', requireAuth, async (req, res) => {
   try {
-    await GoogleAuth.deleteMany({}); // Clear all connections
+    await GoogleAuth.destroy({ where: {} }); // Clear all connections
     res.json({ success: true, message: 'Google Enterprise Account Disconnected' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

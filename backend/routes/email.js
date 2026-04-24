@@ -1,8 +1,9 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
+const { Op } = require('sequelize');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { PartyEmail, EmailLog, GoogleAuth, ReconciliationSession } = require('../models');
+const { PartyEmail, EmailLog, GoogleAuth, ReconciliationSession, sequelize } = require('../models');
 const { generateEmailBody } = require('../services/emailGenerator');
 const gmailSender = require('../services/gmailSender');
 
@@ -18,18 +19,21 @@ router.get('/logs/daily', requireAuth, async (req, res) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const dailyLogs = await EmailLog.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%d-%m-%Y", date: "$createdAt" } },
-          sent: { $sum: { $cond: [{ $eq: ["$status", "SENT"] }, 1, 0] } },
-          failed: { $sum: { $cond: [{ $eq: ["$status", "FAILED"] }, 1, 0] } },
-          total: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
+    // Using raw query for MSSQL aggregation compatibility
+    const dailyLogs = await sequelize.query(`
+      SELECT 
+        FORMAT(createdAt, 'dd-MM-yyyy') as _id,
+        SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) as sent,
+        SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
+        COUNT(*) as total
+      FROM EmailLogs
+      WHERE createdAt >= :thirtyDaysAgo
+      GROUP BY FORMAT(createdAt, 'dd-MM-yyyy')
+      ORDER BY _id ASC
+    `, {
+      replacements: { thirtyDaysAgo },
+      type: sequelize.QueryTypes.SELECT
+    });
 
     res.json({ success: true, data: dailyLogs });
   } catch (err) {
@@ -45,9 +49,16 @@ router.get('/logs/by-date/:date', requireAuth, async (req, res) => {
     const endDate = new Date(date);
     endDate.setDate(endDate.getDate() + 1);
 
-    const logs = await EmailLog.find({
-      createdAt: { $gte: startDate, $lt: endDate }
-    }).sort({ createdAt: -1 }).lean();
+    const logs = await EmailLog.findAll({
+      where: {
+        createdAt: {
+          [Op.gte]: startDate,
+          [Op.lt]: endDate
+        }
+      },
+      order: [['createdAt', 'DESC']],
+      raw: true
+    });
 
     res.json({ success: true, data: logs });
   } catch (err) {
@@ -58,7 +69,11 @@ router.get('/logs/by-date/:date', requireAuth, async (req, res) => {
 // GET /api/email/logs — get all email logs (must be last among /logs routes)
 router.get('/logs', requireAuth, async (req, res) => {
   try {
-    const logs = await EmailLog.find({}).sort({ createdAt: -1 }).limit(100);
+    const logs = await EmailLog.findAll({
+      order: [['createdAt', 'DESC']],
+      limit: 100,
+      raw: true
+    });
     res.json({ success: true, data: logs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -68,12 +83,10 @@ router.get('/logs', requireAuth, async (req, res) => {
 // POST /api/email/verify — verify Gmail connection
 router.post('/verify', requireAuth, async (req, res) => {
   try {
-    const authRecord = await GoogleAuth.findOne({ isActive: true });
+    const authRecord = await GoogleAuth.findOne({ where: { isActive: true } });
     if (!authRecord) {
       return res.status(403).json({ success: false, message: 'No Google account connected. Please visit Settings.' });
     }
-    // We don't necessarily need a 'ping', just checking if we have the record is 
-    // the first step for this enterprise version. 
     res.json({ success: true, message: `Enterprise Dispatcher Active [${authRecord.email}]` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -83,9 +96,9 @@ router.post('/verify', requireAuth, async (req, res) => {
 // POST /api/email/send — send all matched emails via Enterprise Gmail API
 router.post('/send', requireAuth, async (req, res) => {
   try {
-    const { matchedResults, delay: manualDelay } = req.body;
+    const { matchedResults } = req.body;
 
-    const authRecord = await GoogleAuth.findOne({ isActive: true });
+    const authRecord = await GoogleAuth.findOne({ where: { isActive: true } });
     if (!authRecord) {
       return res.status(400).json({ success: false, message: 'Enterprise Dispatcher offline: No Google account connected.' });
     }
@@ -94,7 +107,7 @@ router.post('/send', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'No matched results to send' });
     }
 
-    const partyEmails = await PartyEmail.find({}).lean();
+    const partyEmails = await PartyEmail.findAll({ raw: true });
     const sessionId = `session_${Date.now()}`;
     const logLines = ['=== Emails Sent Successfully ==='];
     let sentCount = 0;
@@ -103,7 +116,7 @@ router.post('/send', requireAuth, async (req, res) => {
 
     for (const entry of matchedResults) {
       const partyCode = entry.partyCode;
-      const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode);
+      const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode || e.partyCode === partyCode);
       const partyName = partyEmailRecord?.partyName || partyCode || 'Unknown Party';
       const ccStr = partyEmailRecord?.cc || '';
       const ccEmails = ccStr ? ccStr.split(',').map(e => e.trim()).filter(Boolean) : [];
@@ -154,7 +167,6 @@ router.post('/send', requireAuth, async (req, res) => {
         });
       }
 
-      // Random delay 1-5 seconds — mirrors Python time.sleep(random.uniform(1,5))
       await randomDelay(1000, 5000);
     }
 
@@ -179,11 +191,15 @@ router.post('/send', requireAuth, async (req, res) => {
 // GET /api/email/log/download — download latest email log as text
 router.get('/log/download', requireAuth, async (req, res) => {
   try {
-    const logs = await EmailLog.find({}).sort({ createdAt: -1 }).limit(200).lean();
+    const logs = await EmailLog.findAll({
+      order: [['createdAt', 'DESC']],
+      limit: 200,
+      raw: true
+    });
 
     const lines = ['=== Emails Sent Successfully ==='];
     for (const log of logs.filter(l => l.status === 'SENT')) {
-      lines.push(`Party Code: ${log.partyCode} | Party Name: ${log.partyName} | Emails: ${log.emails.join(', ')} | CC: ${log.cc.join(', ')}`);
+      lines.push(`Party Code: ${log.partyCode} | Party Name: ${log.partyName} | Emails: ${(log.emails || []).join(', ')} | CC: ${(log.cc || []).join(', ')}`);
     }
     lines.push('\n=== Failed ===');
     for (const log of logs.filter(l => l.status === 'FAILED')) {
@@ -201,7 +217,11 @@ router.get('/log/download', requireAuth, async (req, res) => {
 // GET /api/email/log/excel — download email log as Excel
 router.get('/log/excel', requireAuth, async (req, res) => {
   try {
-    const logs = await EmailLog.find({}).sort({ createdAt: -1 }).limit(200).lean();
+    const logs = await EmailLog.findAll({
+      order: [['createdAt', 'DESC']],
+      limit: 200,
+      raw: true
+    });
 
     const workbook = new ExcelJS.Workbook();
     const ws = workbook.addWorksheet('Email Log');
@@ -209,7 +229,7 @@ router.get('/log/excel', requireAuth, async (req, res) => {
 
     for (const log of logs) {
       if (log.status === 'SENT') {
-        ws.addRow(['SENT', log.partyCode, log.partyName, log.emails.join(', ')]);
+        ws.addRow(['SENT', log.partyCode, log.partyName, (log.emails || []).join(', ')]);
       } else if (log.status === 'FAILED') {
         ws.addRow(['FAILED', log.partyCode, log.partyName, log.error]);
       } else {
@@ -273,7 +293,7 @@ router.get('/log/skip/download', requireAuth, (req, res) => {
 // GET /api/email/party/export — export all party emails as CSV
 router.get('/party/export', requireAuth, async (req, res) => {
   try {
-    const partyEmails = await PartyEmail.find({}).lean();
+    const partyEmails = await PartyEmail.findAll({ raw: true });
 
     const headers = 'partyCode,partyName,email,cc\n';
     const rows = partyEmails.map(p => {
@@ -299,13 +319,18 @@ router.post('/retry', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'No failed log IDs provided' });
     }
 
-    const authRecord = await GoogleAuth.findOne({ isActive: true });
+    const authRecord = await GoogleAuth.findOne({ where: { isActive: true } });
     if (!authRecord) {
       return res.status(400).json({ success: false, message: 'Enterprise Dispatcher offline: No Google account connected.' });
     }
 
-    const partyEmails = await PartyEmail.find({}).lean();
-    const failedLogs = await EmailLog.find({ _id: { $in: logIds }, status: 'FAILED' });
+    const partyEmails = await PartyEmail.findAll({ raw: true });
+    const failedLogs = await EmailLog.findAll({ 
+      where: { 
+        id: { [Op.in]: logIds }, 
+        status: 'FAILED' 
+      } 
+    });
 
     if (!failedLogs.length) {
       return res.status(400).json({ success: false, message: 'No failed emails found to retry' });
@@ -317,21 +342,17 @@ router.post('/retry', requireAuth, async (req, res) => {
 
     for (const log of failedLogs) {
       const partyCode = log.partyCode;
-      // Get latest email from PartyEmail collection (not the stored one)
       const partyEmailRecord = partyEmails.find(e => e.partyCode === partyCode || e.partyName === partyCode);
       const partyName = partyEmailRecord?.partyName || log.partyName || partyCode || 'Unknown Party';
 
-      // Use fresh emails from PartyEmail collection
       const freshToEmails = partyEmailRecord?.email ? partyEmailRecord.email.split(',').map(e => e.trim()).filter(Boolean) : (log.emails || []);
       const freshCcEmails = partyEmailRecord?.cc ? partyEmailRecord.cc.split(',').map(e => e.trim()).filter(Boolean) : (log.cc || []);
 
-      // Use stored payment data or fetch from session
       let payments = log.payments && log.payments.length > 0 ? log.payments : [];
       let debits = log.debits && log.debits.length > 0 ? log.debits : [];
       
-      // If no payment data stored, try to fetch from the latest session
       if (payments.length === 0 && partyCode) {
-        const session = await ReconciliationSession.findOne({}).sort({ createdAt: -1 });
+        const session = await ReconciliationSession.findOne({ order: [['createdAt', 'DESC']] });
         if (session && session.matchedResults) {
           const partyData = session.matchedResults.find(m => m.partyCode === partyCode || m.partyName === partyCode);
           if (partyData) {
@@ -340,9 +361,6 @@ router.post('/retry', requireAuth, async (req, res) => {
           }
         }
       }
-
-      // Log which emails we're using for debugging
-      console.log(`🔄 Retrying for ${partyCode} with fresh emails:`, { to: freshToEmails, cc: freshCcEmails, payments: payments.length });
 
       const htmlBody = generateEmailBody(partyCode, payments, debits, partyEmails);
 
@@ -355,15 +373,15 @@ router.post('/retry', requireAuth, async (req, res) => {
         });
 
         if (result.success) {
-          await EmailLog.findByIdAndUpdate(log._id, { status: 'SENT', error: '', emails: freshToEmails, cc: freshCcEmails });
+          await log.update({ status: 'SENT', error: '', emails: freshToEmails, cc: freshCcEmails });
           sentCount++;
-          results.push({ partyCode, partyName, status: 'sent', logId: log._id });
+          results.push({ partyCode, partyName, status: 'sent', logId: log.id });
         } else {
           throw new Error(result.error);
         }
       } catch (err) {
         failedCount++;
-        results.push({ partyCode, partyName, status: 'failed', error: err.message, logId: log._id });
+        results.push({ partyCode, partyName, status: 'failed', error: err.message, logId: log.id });
       }
 
       await randomDelay(1000, 5000);

@@ -20,7 +20,7 @@ class GmailSender {
   async sendMail({ to, cc, subject, text, html, attachments }) {
     try {
       // 1. Fetch active infrastructure record
-      const authRecord = await GoogleAuth.findOne({ isActive: true });
+      const authRecord = await GoogleAuth.findOne({ where: { isActive: true } });
       if (!authRecord) {
         throw new Error('Enterprise Dispatcher Offline: No active Gmail account connected.');
       }

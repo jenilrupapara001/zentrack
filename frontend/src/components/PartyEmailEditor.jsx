@@ -12,10 +12,17 @@ export default function PartyEmailEditor() {
   const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
-    getPartyEmails()
-      .then(res => setParties(res.data.data || []))
-      .catch(() => toast.error('Failed to load party emails'))
-      .finally(() => setFetching(false));
+    const loadParties = async () => {
+      try {
+        const res = await getPartyEmails();
+        setParties(res.data.data || []);
+      } catch {
+        toast.error('Failed to load party emails');
+      } finally {
+        setFetching(false);
+      }
+    };
+    loadParties();
   }, []);
 
   const handleSelect = (partyCode) => {

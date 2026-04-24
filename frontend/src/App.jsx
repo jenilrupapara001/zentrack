@@ -19,24 +19,26 @@ export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [checking, setChecking] = useState(true);
   useEffect(() => {
-    // Identity verification with safe-abort timeout for cold-starts
-    const authPromise = getAuthStatus();
-    const timeoutPromise = new Promise((resolve) =>
-      setTimeout(() => resolve({ data: { authenticated: false, isTimeout: true } }), 10000)
-    );
+    const checkAuth = async () => {
+      try {
+        const authPromise = getAuthStatus();
+        const timeoutPromise = new Promise((resolve) =>
+          setTimeout(() => resolve({ data: { authenticated: false, isTimeout: true } }), 10000)
+        );
 
-    Promise.race([authPromise, timeoutPromise])
-      .then(res => {
+        const res = await Promise.race([authPromise, timeoutPromise]);
         setAuthenticated(res.data.authenticated);
         if (res.data.isTimeout) {
           console.warn('📶 Auth check timed out. Defaulting to unauthenticated for performance.');
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error('🛡️ Auth check failed:', err);
         setAuthenticated(false);
-      })
-      .finally(() => setChecking(false));
+      } finally {
+        setChecking(false);
+      }
+    };
+    checkAuth();
   }, []);
 
   const handleLogout = () => {

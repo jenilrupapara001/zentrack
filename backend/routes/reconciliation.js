@@ -4,7 +4,7 @@ const XLSX = require('xlsx');
 const ExcelJS = require('exceljs');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { PartyEmail, ReconciliationSession } = require('../models');
+const { PartyEmail, ReconciliationSession, sequelize } = require('../models');
 const { loadExcel, matchData, validateDates } = require('../services/excelParser');
 
 const storage = multer.memoryStorage();
@@ -12,6 +12,7 @@ const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
 // POST /api/reconciliation/upload — upload and parse payment Excel
 router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
     const { syncToDatabase } = req.body;
@@ -19,7 +20,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     const { paymentDf, debitDf } = loadExcel(req.file.buffer);
     validateDates(paymentDf);
 
-    const partyEmails = await PartyEmail.find({}).lean();
+    const partyEmails = await PartyEmail.findAll({ raw: true });
     const normalizedEmails = partyEmails.map(e => ({
       partyCode: e.partyCode,
       partyName: e.partyName,
@@ -33,14 +34,21 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     if (syncToDatabase === 'true' || syncToDatabase === true) {
       for (const entry of matchedResults) {
         if (entry.partyCode && entry.emails.length > 0) {
-          await PartyEmail.findOneAndUpdate(
-            { partyCode: entry.partyCode },
-            { 
+          const [record, created] = await PartyEmail.findOrCreate({
+            where: { partyCode: entry.partyCode },
+            defaults: {
               partyName: entry.partyName,
-              email: entry.emails[0], // Use the first email found
+              email: entry.emails[0],
             },
-            { upsert: true }
-          );
+            transaction
+          });
+          
+          if (!created) {
+            await record.update({
+              partyName: entry.partyName,
+              email: entry.emails[0],
+            }, { transaction });
+          }
         }
       }
     }
@@ -57,12 +65,14 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
         withoutEmail: partiesWithoutEmail.length,
       },
       status: 'processed'
-    });
+    }, { transaction });
+
+    await transaction.commit();
 
     res.json({
       success: true,
       data: {
-        sessionId: session._id,
+        sessionId: session.id,
         matchedResults,
         skipLogLines,
         partiesWithoutEmail,
@@ -70,6 +80,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       },
     });
   } catch (err) {
+    if (transaction) await transaction.rollback();
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -77,7 +88,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
 // GET /api/reconciliation/session/:id — get specific session data
 router.get('/session/:id', requireAuth, async (req, res) => {
   try {
-    const session = await ReconciliationSession.findById(req.params.id);
+    const session = await ReconciliationSession.findByPk(req.params.id);
     if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
     res.json({ success: true, data: session });
   } catch (err) {
@@ -88,7 +99,9 @@ router.get('/session/:id', requireAuth, async (req, res) => {
 // GET /api/reconciliation/session — get latest session data
 router.get('/session', requireAuth, async (req, res) => {
   try {
-    const session = await ReconciliationSession.findOne({}).sort({ createdAt: -1 });
+    const session = await ReconciliationSession.findOne({
+      order: [['createdAt', 'DESC']]
+    });
     if (!session) return res.json({ success: true, data: null });
     res.json({ success: true, data: session });
   } catch (err) {
@@ -148,17 +161,21 @@ router.get('/sample', requireAuth, (req, res) => {
 // GET /api/reconciliation/download/partywise — download all party-wise sheets in one Excel
 router.get('/download/partywise', requireAuth, async (req, res) => {
   try {
-    if (!currentSession || !currentSession.matchedResults.length) {
+    const currentSession = await ReconciliationSession.findOne({
+      order: [['createdAt', 'DESC']]
+    });
+
+    if (!currentSession || !currentSession.matchedResults || !currentSession.matchedResults.length) {
       return res.status(400).json({ success: false, message: 'No reconciliation data available. Please upload and process first.' });
     }
 
     const workbook = new ExcelJS.Workbook();
     for (const party of currentSession.matchedResults) {
-      const partyCode = String(party.partyCode).substring(0, 28);
+      const partyCode = String(party.partyCode || 'Unknown').substring(0, 28);
 
       // Payment sheet
       const paySheet = workbook.addWorksheet(`${partyCode}_Pay`);
-      if (party.payments.length) {
+      if (party.payments && party.payments.length) {
         const headers = Object.keys(party.payments[0]);
         paySheet.addRow(headers);
         for (const row of party.payments) {

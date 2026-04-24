@@ -3,9 +3,7 @@ const multer = require('multer');
 const XLSX = require('xlsx');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { PartyEmail } = require('../models');
-
-const EMAIL_UPLOAD_PASSWORD = process.env.EMAIL_UPLOAD_PASSWORD || 'Payment Mail Sender Dashboard';
+const { PartyEmail, sequelize } = require('../models');
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
@@ -13,7 +11,7 @@ const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 // GET /api/party-emails — list all
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const emails = await PartyEmail.find({}).lean();
+    const emails = await PartyEmail.findAll({ raw: true });
     res.json({ success: true, data: emails });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -22,6 +20,7 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/party-emails/upload — bulk upload via Excel (password protected)
 router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
 
@@ -34,11 +33,12 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     const firstRow = rows[0];
     const hasRequiredCols = 'Party Code' in firstRow && 'Email' in firstRow;
     if (!hasRequiredCols) {
+      await transaction.rollback();
       return res.status(400).json({ success: false, message: "Excel must contain 'Party Code', 'Party Name', and 'Email' columns" });
     }
 
     const missingEmails = [];
-    const upsertOps = rows.map(row => {
+    for (const row of rows) {
       const partyCode = String(row['Party Code'] || '').trim();
       const partyName = String(row['Party Name'] || '').trim();
       const email = String(row['Email'] || '').trim();
@@ -48,23 +48,30 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
         missingEmails.push(`${partyName} (${partyCode})`);
       }
 
-      return {
-        updateOne: {
-          filter: { partyName },
-          update: { $set: { partyCode, partyName, email, cc } },
-          upsert: true,
-        },
-      };
-    });
+      // Sequelize upsert works by checking the primary key or a unique index.
+      // Since partyName is not a primary key, we should either find and update or ensure it has a unique index.
+      // In our model, we added an index but not a UNIQUE index. Let's assume partyName should be unique for upsert.
+      
+      const [record, created] = await PartyEmail.findOrCreate({
+        where: { partyName },
+        defaults: { partyCode, email, cc },
+        transaction
+      });
 
-    await PartyEmail.bulkWrite(upsertOps);
+      if (!created) {
+        await record.update({ partyCode, email, cc }, { transaction });
+      }
+    }
+
+    await transaction.commit();
 
     res.json({
       success: true,
-      message: `Updated ${upsertOps.length} party email records`,
+      message: `Updated ${rows.length} party email records`,
       missingEmails,
     });
   } catch (err) {
+    if (transaction) await transaction.rollback();
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -73,12 +80,14 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
 router.put('/:id', requireAuth, async (req, res) => {
   try {
     const { partyCode, partyName, email, cc } = req.body;
-    const updated = await PartyEmail.findByIdAndUpdate(
-      req.params.id,
-      { $set: { partyCode, partyName, email, cc } },
-      { new: true }
+    const [updatedCount] = await PartyEmail.update(
+      { partyCode, partyName, email, cc },
+      { where: { id: req.params.id } }
     );
-    if (!updated) return res.status(404).json({ success: false, message: 'Party not found' });
+    
+    if (updatedCount === 0) return res.status(404).json({ success: false, message: 'Party not found' });
+    
+    const updated = await PartyEmail.findByPk(req.params.id);
     res.json({ success: true, data: updated });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

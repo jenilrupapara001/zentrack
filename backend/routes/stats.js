@@ -1,26 +1,28 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { PartyEmail, EmailLog, ReconciliationSession } = require('../models');
+const { PartyEmail, EmailLog, ReconciliationSession, sequelize } = require('../models');
 
 // GET /api/stats — Aggregate telemetry for dashboard
 router.get('/', requireAuth, async (req, res) => {
-  const start = Date.now();
-  console.log(`📊 Aggregating dashboard stats... [User: ${req.session.authenticated}]`);
   try {
-    const totalParties = await PartyEmail.countDocuments();
+    const totalParties = await PartyEmail.count();
     
     // Success Rate & Failures (Last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const emailStats = await EmailLog.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-      { $group: {
-        _id: "$status",
-        count: { $sum: 1 }
-      }}
-    ]);
+    const emailStats = await sequelize.query(`
+      SELECT 
+        status as _id,
+        COUNT(*) as count
+      FROM EmailLogs
+      WHERE createdAt >= :thirtyDaysAgo
+      GROUP BY status
+    `, {
+      replacements: { thirtyDaysAgo },
+      type: sequelize.QueryTypes.SELECT
+    });
 
     const sent = emailStats.find(s => s._id === 'SENT')?.count || 0;
     const failed = emailStats.find(s => s._id === 'FAILED')?.count || 0;
@@ -32,31 +34,40 @@ router.get('/', requireAuth, async (req, res) => {
     sevenDaysAgo.setHours(0,0,0,0);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
 
-    const transmissionHistory = await EmailLog.aggregate([
-      { $match: { createdAt: { $gte: sevenDaysAgo } } },
-      { $group: {
-        _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-        sent: { $sum: { $cond: [{ $eq: ["$status", "SENT"] }, 1, 0] } },
-        failed: { $sum: { $cond: [{ $eq: ["$status", "FAILED"] }, 1, 0] } }
-      }},
-      { $sort: { _id: 1 } }
-    ]);
+    const transmissionHistory = await sequelize.query(`
+      SELECT 
+        FORMAT(createdAt, 'yyyy-MM-dd') as _id,
+        SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) as sent,
+        SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed
+      FROM EmailLogs
+      WHERE createdAt >= :sevenDaysAgo
+      GROUP BY FORMAT(createdAt, 'yyyy-MM-dd')
+      ORDER BY _id ASC
+    `, {
+      replacements: { sevenDaysAgo },
+      type: sequelize.QueryTypes.SELECT
+    });
 
     // Processing Volume (Reconciliation Sessions)
-    const processingHistory = await ReconciliationSession.aggregate([
-      { $match: { createdAt: { $gte: sevenDaysAgo } } },
-      { $group: {
-        _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-        count: { $sum: 1 }
-      }},
-      { $sort: { _id: 1 } }
-    ]);
+    const processingHistory = await sequelize.query(`
+      SELECT 
+        FORMAT(createdAt, 'yyyy-MM-dd') as _id,
+        COUNT(*) as count
+      FROM ReconciliationSessions
+      WHERE createdAt >= :sevenDaysAgo
+      GROUP BY FORMAT(createdAt, 'yyyy-MM-dd')
+      ORDER BY _id ASC
+    `, {
+      replacements: { sevenDaysAgo },
+      type: sequelize.QueryTypes.SELECT
+    });
 
     // Recent Activity Feed
-    const recentActivity = await EmailLog.find({})
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .lean();
+    const recentActivity = await EmailLog.findAll({
+      order: [['createdAt', 'DESC']],
+      limit: 5,
+      raw: true
+    });
 
     // Map ISO dates to day names for frontend charts
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
