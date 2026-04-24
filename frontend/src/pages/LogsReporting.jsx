@@ -249,10 +249,10 @@ export default function LogsReporting() {
                             {log.status === 'FAILED' && (
                               <button 
                                 onClick={() => handleRetrySingle(log.id || log._id)}
-                                disabled={retrying === log._id}
+                                disabled={retrying === (log.id || log._id)}
                                 className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors disabled:opacity-50"
                               >
-                                {retrying === log._id ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />}
+                                {retrying === (log.id || log._id) ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />}
                               </button>
                             )}
                          </td>

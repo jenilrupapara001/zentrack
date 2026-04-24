@@ -66,7 +66,7 @@ export default function PartyManagement() {
   };
 
   const startEdit = (party) => {
-    setEditingId(party._id);
+    setEditingId(party.id || party._id);
     setEditFormData({
       partyCode: party.partyCode || '',
       partyName: party.partyName || '',
@@ -85,7 +85,7 @@ export default function PartyManagement() {
     try {
       const res = await updatePartyEmail(id, editFormData);
       toast.success(`Registry updated: ${editFormData.partyCode || editFormData.partyName}`);
-      setParties(p => p.map(item => item._id === id ? res.data.data : item));
+      setParties(p => p.map(item => (item.id || item._id) === id ? res.data.data : item));
       setEditingId(null);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Update failed');
@@ -225,9 +225,9 @@ export default function PartyManagement() {
                   </td>
                 </tr>
               ) : paginatedParties.map(p => (
-                <tr key={p._id} className="hover:bg-slate-50/50 transition-colors group">
+                <tr key={p.id || p._id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-6 py-4">
-                    {editingId === p._id ? (
+                    {editingId === (p.id || p._id) ? (
                       <div className="space-y-2 max-w-[240px]">
                         <div className="relative">
                            <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -256,7 +256,7 @@ export default function PartyManagement() {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    {editingId === p._id ? (
+                    {editingId === (p.id || p._id) ? (
                       <div className="space-y-2 max-w-[320px]">
                         <div className="relative">
                           <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -310,10 +310,10 @@ export default function PartyManagement() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    {editingId === p._id ? (
+                    {editingId === (p.id || p._id) ? (
                       <div className="flex justify-end gap-2">
                         <button 
-                          onClick={() => saveDetails(p._id)}
+                          onClick={() => saveDetails(p.id || p._id)}
                           className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                         >
                           <Save size={18} />

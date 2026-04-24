@@ -20,18 +20,7 @@ router.get('/logs/daily', requireAuth, async (req, res) => {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     // Using raw query for MSSQL aggregation compatibility
-    const dailyLogs = await sequelize.query(`
-      SELECT 
-        FORMAT(createdAt, 'dd-MM-yyyy') as _id,
-        SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) as sent,
-        SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
-        COUNT(*) as total
-      FROM EmailLogs
-      WHERE createdAt >= :thirtyDaysAgo
-      GROUP BY FORMAT(createdAt, 'dd-MM-yyyy')
-      ORDER BY _id ASC
-    `, {
-      replacements: { thirtyDaysAgo },
+    const dailyLogs = await sequelize.query('EXEC sp_GetDailyLogSummary @DaysBack = 30', {
       type: sequelize.QueryTypes.SELECT
     });
 

@@ -39,7 +39,7 @@ export default function PartyEmailEditor() {
     if (!party) return;
     setLoading(true);
     try {
-      await updatePartyEmail(party._id, newEmail, password);
+      await updatePartyEmail(party.id || party._id, newEmail, password);
       toast.success(`Email updated for ${selected}`);
       setParties(prev =>
         prev.map(p => p.partyCode === selected ? { ...p, email: newEmail } : p)
@@ -83,7 +83,7 @@ export default function PartyEmailEditor() {
         >
           <option value="">— Choose a party to manage —</option>
           {parties.map(p => (
-            <option key={p._id} value={p.partyCode}>
+            <option key={p.id || p._id} value={p.partyCode}>
               {p.partyName} ({p.partyCode})
             </option>
           ))}

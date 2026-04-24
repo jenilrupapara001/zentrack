@@ -52,15 +52,11 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       // Since partyName is not a primary key, we should either find and update or ensure it has a unique index.
       // In our model, we added an index but not a UNIQUE index. Let's assume partyName should be unique for upsert.
       
-      const [record, created] = await PartyEmail.findOrCreate({
-        where: { partyName },
-        defaults: { partyCode, email, cc },
+      // Use the stored procedure for high-performance upsert
+      await sequelize.query('EXEC sp_UpsertPartyEmail @PartyCode = :partyCode, @PartyName = :partyName, @Email = :email, @CC = :cc', {
+        replacements: { partyCode, partyName, email, cc },
         transaction
       });
-
-      if (!created) {
-        await record.update({ partyCode, email, cc }, { transaction });
-      }
     }
 
     await transaction.commit();
