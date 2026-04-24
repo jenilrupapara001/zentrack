@@ -6,10 +6,12 @@ const jsonColumn = (fieldName) => ({
   type: DataTypes.TEXT,
   get() {
     const value = this.getDataValue(fieldName);
+    if (!value) return [];
     try {
-      return value ? JSON.parse(value) : null;
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      return Array.isArray(parsed) ? parsed : [parsed];
     } catch (e) {
-      return value;
+      return [value];
     }
   },
   set(value) {

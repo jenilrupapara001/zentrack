@@ -56,8 +56,7 @@ router.get('/logs/by-date/:date', requireAuth, async (req, res) => {
           [Op.lt]: endDate
         }
       },
-      order: [['createdAt', 'DESC']],
-      raw: true
+      order: [['createdAt', 'DESC']]
     });
 
     res.json({ success: true, data: logs });
@@ -70,9 +69,7 @@ router.get('/logs/by-date/:date', requireAuth, async (req, res) => {
 router.get('/logs', requireAuth, async (req, res) => {
   try {
     const logs = await EmailLog.findAll({
-      order: [['createdAt', 'DESC']],
-      limit: 100,
-      raw: true
+      limit: 100
     });
     res.json({ success: true, data: logs });
   } catch (err) {
@@ -193,8 +190,7 @@ router.get('/log/download', requireAuth, async (req, res) => {
   try {
     const logs = await EmailLog.findAll({
       order: [['createdAt', 'DESC']],
-      limit: 200,
-      raw: true
+      limit: 200
     });
 
     const lines = ['=== Emails Sent Successfully ==='];
@@ -219,8 +215,7 @@ router.get('/log/excel', requireAuth, async (req, res) => {
   try {
     const logs = await EmailLog.findAll({
       order: [['createdAt', 'DESC']],
-      limit: 200,
-      raw: true
+      limit: 200
     });
 
     const workbook = new ExcelJS.Workbook();

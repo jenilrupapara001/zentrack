@@ -132,7 +132,7 @@ export default function EmailSender({ matchedResults: propResults }) {
 
     try {
       const { retryEmails } = await import('../services/api');
-      const res = await retryEmails(failedLogs.map(l => l._id));
+      const res = await retryEmails(failedLogs.map(l => l.id || l._id));
 
       if (res.data.success) {
         const { sentCount, failedCount } = res.data.data;
@@ -335,9 +335,11 @@ export default function EmailSender({ matchedResults: propResults }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {emailLogs.slice(0, 20).map((log) => (
-                        <tr key={log._id} className="hover:bg-slate-50">
+                        <tr key={log.id || log._id} className="hover:bg-slate-50">
                           <td className="px-4 py-3">{log.partyName || log.partyCode}</td>
-                          <td className="px-4 py-3 text-slate-500 text-xs">{log.emails?.join(', ')}</td>
+                          <td className="px-4 py-3 text-slate-500 text-xs">
+                            {Array.isArray(log.emails) ? log.emails.join(', ') : log.emails}
+                          </td>
                           <td className="px-4 py-3">
                             <span className={`px-2 py-1 rounded-full text-xs font-bold ${log.status === 'SENT' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                               {log.status === 'SENT' ? 'SENT' : 'FAILED'}

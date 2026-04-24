@@ -65,8 +65,7 @@ router.get('/', requireAuth, async (req, res) => {
     // Recent Activity Feed
     const recentActivity = await EmailLog.findAll({
       order: [['createdAt', 'DESC']],
-      limit: 5,
-      raw: true
+      limit: 5
     });
 
     // Map ISO dates to day names for frontend charts

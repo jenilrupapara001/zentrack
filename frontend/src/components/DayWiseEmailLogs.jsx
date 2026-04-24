@@ -149,9 +149,9 @@ export default function DayWiseEmailLogs() {
                           </thead>
                           <tbody className="divide-y divide-slate-200">
                             {dateLogs[day._id].map((log) => (
-                              <tr key={log._id}>
+                              <tr key={log.id || log._id}>
                                 <td className="px-4 py-2">{log.partyName || log.partyCode}</td>
-                                <td className="px-4 py-2 text-slate-500">{log.emails?.join(', ')}</td>
+                                <td className="px-4 py-2 text-slate-500">{Array.isArray(log.emails) ? log.emails.join(', ') : log.emails}</td>
                                 <td className="px-4 py-2 text-center">
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                     log.status === 'SENT' 

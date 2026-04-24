@@ -222,13 +222,15 @@ export default function LogsReporting() {
                         </td>
                       </tr>
                     ) : filteredLogs.map(log => (
-                      <tr key={log._id} className="hover:bg-slate-50 transition-colors group">
+                      <tr key={log.id || log._id} className="hover:bg-slate-50 transition-colors group">
                         <td className="px-6 py-4 text-xs font-medium text-slate-400 tabular-nums">
                            {new Date(log.createdAt).toLocaleString()}
                         </td>
                         <td className="px-6 py-4">
                            <div className="text-sm font-bold text-slate-900">{log.partyName || log.partyCode}</div>
-                           <div className="text-[10px] font-medium text-slate-500">{log.emails.join(', ')}</div>
+                           <div className="text-[10px] font-medium text-slate-500">
+                             {Array.isArray(log.emails) ? log.emails.join(', ') : log.emails}
+                           </div>
                         </td>
                         <td className="px-6 py-4 text-center">
                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold border ${
@@ -246,7 +248,7 @@ export default function LogsReporting() {
 <td className="px-6 py-4 text-right">
                             {log.status === 'FAILED' && (
                               <button 
-                                onClick={() => handleRetrySingle(log._id)}
+                                onClick={() => handleRetrySingle(log.id || log._id)}
                                 disabled={retrying === log._id}
                                 className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors disabled:opacity-50"
                               >
