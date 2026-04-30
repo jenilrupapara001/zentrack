@@ -83,7 +83,7 @@ export default function ReconciliationView() {
       const res = await uploadReconciliationFiles(file, syncToDatabase);
       if (res.data.success) {
         setResults(res.data.data);
-        toast.success(`Processing complete: ${res.data.data.summary.matched} clusters identified.`);
+        toast.success(`Processing complete: ${res.data.data.summary?.matched || 0} clusters identified.`);
         
         // Redirect to Email Sender after short delay
         setTimeout(() => {
