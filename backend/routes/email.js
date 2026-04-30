@@ -82,7 +82,7 @@ router.post('/verify', requireAuth, async (req, res) => {
 // POST /api/email/send — send all matched emails via Enterprise Gmail API
 router.post('/send', requireAuth, async (req, res) => {
   try {
-    const { matchedResults } = req.body;
+    const { matchedResults, sessionId: passedSessionId } = req.body;
 
     const authRecord = await GoogleAuth.findOne({ where: { isActive: true } });
     if (!authRecord) {
@@ -94,7 +94,7 @@ router.post('/send', requireAuth, async (req, res) => {
     }
 
     const partyEmails = await PartyEmail.findAll({ raw: true });
-    const sessionId = `session_${Date.now()}`;
+    const sessionId = passedSessionId || `session_${Date.now()}`;
     const logLines = ['=== Emails Sent Successfully ==='];
     let sentCount = 0;
     let failedCount = 0;
@@ -103,9 +103,14 @@ router.post('/send', requireAuth, async (req, res) => {
     for (const entry of matchedResults) {
       const partyCode = entry.partyCode;
       const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode || e.partyCode === partyCode);
-      const partyName = partyEmailRecord?.partyName || partyCode || 'Unknown Party';
-      const ccStr = partyEmailRecord?.cc || '';
-      const ccEmails = ccStr ? ccStr.split(',').map(e => e.trim()).filter(Boolean) : [];
+      const partyName = partyEmailRecord?.partyName || entry.partyName || partyCode || 'Unknown Party';
+      
+      let ccEmails = [];
+      if (entry.ccEmails && Array.isArray(entry.ccEmails)) {
+        ccEmails = entry.ccEmails;
+      } else if (partyEmailRecord?.cc) {
+        ccEmails = partyEmailRecord.cc.split(',').map(e => e.trim()).filter(Boolean);
+      }
 
       const htmlBody = generateEmailBody(partyCode, entry.payments, entry.debits, partyEmails);
 

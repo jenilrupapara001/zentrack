@@ -48,11 +48,13 @@ export default function EmailSender({ matchedResults: propResults }) {
   const [gmailStatus, setGmailStatus] = useState({ connected: false, email: null });
   const [emailLogs, setEmailLogs] = useState([]);
   const [retrying, setRetrying] = useState(false);
+  const [sendResult, setSendResult] = useState(null);
 
   // Determine active results
   const activeResults = sessionData?.matchedResults || propResults || [];
 
   useEffect(() => {
+    setSendResult(null);
     fetchInitialData();
   }, [sessionId, refreshKey]);
 
@@ -85,9 +87,9 @@ export default function EmailSender({ matchedResults: propResults }) {
 
   const handleSendBatch = async () => {
     if (!gmailStatus.connected) return toast.error('Enterprise Dispatcher Offline: Connect Gmail in Settings');
-    if (!activeResults.length) return toast.error('No results to broadcast');
+    if (!activeResults.length) return toast.error('No results to send');
 
-    const confirmed = window.confirm(`ZenTrack will now broadcast ${activeResults.length} reconciliation emails via the Enterprise Gmail API. Proceed?`);
+    const confirmed = window.confirm(`ZenTrack will now send ${activeResults.length} reconciliation emails via the Enterprise Gmail API. Proceed?`);
     if (!confirmed) return;
 
     setSending(true);
@@ -96,9 +98,12 @@ export default function EmailSender({ matchedResults: propResults }) {
     try {
       await api.post('/email/verify');
 
-      const res = await sendEmails({ matchedResults: activeResults });
+      const res = await sendEmails({ matchedResults: activeResults, sessionId });
+
+      toast.dismiss(toastId);
 
       if (res.data.success) {
+        setSendResult(res.data.data);
         const { sentCount, failedCount } = res.data.data;
         if (sentCount > 0) {
           showToast({ type: 'success', title: '✅ Sent!', message: `${sentCount} email(s) delivered successfully`, duration: 4000 });
@@ -112,6 +117,7 @@ export default function EmailSender({ matchedResults: propResults }) {
         await fetchInitialData();
       }
     } catch (err) {
+      toast.dismiss(toastId);
       showToast({ type: 'error', title: 'Error', message: err.response?.data?.message || err.message, duration: 5000 });
     } finally {
       setSending(false);
@@ -152,20 +158,25 @@ export default function EmailSender({ matchedResults: propResults }) {
   };
 
   // Helper for results display
-  const sendOutcome = sessionData?.results;
+  const sendOutcome = sendResult || sessionData?.results;
+
+  const calculateTotal = (payments) => {
+    if (!payments) return 0;
+    return payments.reduce((acc, curr) => acc + (curr['Bank Payment'] || 0), 0);
+  };
 
   // Data for preview if no results are active
   const previewData = {
     to: activeResults[0]?.emails?.[0] || 'finance@zen-track.com',
     subject: `Payment Reconciliation Statement - ${activeResults[0]?.partyCode || 'ZenTrack Sample Entity'}`,
-    body: `Dear Team,\n\nPlease find attached the payment reconciliation statement for the recent transactions. \n\nTotal Settled: ${activeResults[0]?.totalSettled || '₹4,50,000.00'}\nRecords: ${activeResults[0]?.payments?.length || 12}\n\nPlease acknowledge receipt.`
+    body: `Dear Team,\n\nPlease find attached the payment reconciliation statement for the recent transactions. \n\nTotal Settled: ₹${calculateTotal(activeResults[0]?.payments).toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nRecords: ${activeResults[0]?.payments?.length || 0}\n\nPlease acknowledge receipt.`
   };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
       <div>
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Automation Dispatch</h1>
-        <p className="text-slate-500 text-sm mt-1">Configure secure SMTP routing and broadcast reconciliation statements to verified entities.</p>
+        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Email Dispatch</h1>
+        <p className="text-slate-500 text-sm mt-1">Configure secure SMTP routing and send reconciliation statements to verified entities.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -207,7 +218,7 @@ export default function EmailSender({ matchedResults: propResults }) {
             <div>
               <div className="text-xs font-bold text-blue-900 uppercase tracking-wider mb-1">Smart Throttling</div>
               <p className="text-[11px] text-blue-700 leading-relaxed">
-                To ensure 100% deliverability, we inject 1-5s random delays between broadcasts to avoid SMTP rate-limiting.
+                To ensure 100% deliverability, we inject 1-5s random delays between transmissions to avoid SMTP rate-limiting.
               </p>
             </div>
           </div>
@@ -296,7 +307,7 @@ export default function EmailSender({ matchedResults: propResults }) {
                     className="btn-primary w-full max-w-sm h-12 flex items-center justify-center gap-3 shadow-lg shadow-primary-200"
                   >
                     {sending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
-                    {sending ? 'Broadcasting Batch...' : 'Commit & Broadcast Batch'}
+                    {sending ? 'Sending Emails...' : 'Send Emails'}
                   </button>
                   <p className="text-[10px] text-slate-400 font-medium">
                     Requires established clusters from the Reconciliation Engine.
