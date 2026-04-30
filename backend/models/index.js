@@ -111,6 +111,10 @@ const EmailLog = sequelize.define('EmailLog', {
   },
   payments: jsonColumn('payments'),
   debits: jsonColumn('debits'),
+  batchId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
 }, {
   timestamps: true,
 });

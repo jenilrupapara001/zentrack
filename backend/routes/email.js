@@ -129,6 +129,7 @@ router.post('/send', requireAuth, async (req, res) => {
 
           await EmailLog.create({
             sessionId,
+            batchId: sessionId,
             status: 'SENT',
             partyCode,
             partyName,
@@ -147,6 +148,7 @@ router.post('/send', requireAuth, async (req, res) => {
 
         await EmailLog.create({
           sessionId,
+          batchId: sessionId,
           status: 'FAILED',
           partyCode,
           partyName,

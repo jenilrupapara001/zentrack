@@ -225,9 +225,12 @@ export default function ReconciliationView() {
       )}
 
       {results && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-slate-900">Reconciliation Results</h3>
+            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+              <Search size={18} className="text-primary-600" />
+              Reconciliation Results
+            </h3>
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
@@ -312,6 +315,51 @@ export default function ReconciliationView() {
                 </div>
               );
             })}
+          </div>
+
+          {/* Debug Console Section */}
+          <div className="mt-12 space-y-4">
+             <div className="flex items-center gap-2">
+                <Settings size={18} className="text-slate-400" />
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Engine Telemetry</h3>
+             </div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Skipped Parties */}
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                   <div className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3 flex justify-between">
+                      <span>Skipped Exceptions</span>
+                      <span>{results.skipLogLines?.length || 0}</span>
+                   </div>
+                   <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {results.skipLogLines?.length > 0 ? results.skipLogLines.map((line, i) => (
+                        <div key={i} className="text-[10px] font-medium text-slate-500 bg-white border border-slate-100 p-2 rounded-lg">
+                           {line}
+                        </div>
+                      )) : (
+                        <div className="text-[10px] text-slate-400 italic">No exceptions logged</div>
+                      )}
+                   </div>
+                </div>
+
+                {/* Missing Mappings */}
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                   <div className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-3 flex justify-between">
+                      <span>Missing Registry Mappings</span>
+                      <span>{results.partiesWithoutEmail?.length || 0}</span>
+                   </div>
+                   <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {results.partiesWithoutEmail?.length > 0 ? results.partiesWithoutEmail.map((p, i) => (
+                        <div key={i} className="text-[10px] font-medium text-slate-500 bg-white border border-slate-100 p-2 rounded-lg flex justify-between">
+                           <span>{p.partyName} ({p.partyCode})</span>
+                           <span className="text-slate-400">{p.paymentCount} rows</span>
+                        </div>
+                      )) : (
+                        <div className="text-[10px] text-slate-400 italic">All parties mapped to registry</div>
+                      )}
+                   </div>
+                </div>
+             </div>
           </div>
         </div>
       )}
