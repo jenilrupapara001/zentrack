@@ -10,10 +10,9 @@ const sequelize = new Sequelize(
     dialect: 'mssql',
     dialectOptions: {
       options: {
-        // Azure requires encrypt: true, but Azure always uses a hostname.
-        // If an IP is used, it's likely a private server that might not support/require TLS SNI.
-        encrypt: process.env.DB_SERVER && /^[0-9.]+$/.test(process.env.DB_SERVER) ? false : true,
+        encrypt: false,
         trustServerCertificate: true,
+        connectTimeout: 30000,
       }
     },
     logging: false, // Set to console.log to see SQL queries

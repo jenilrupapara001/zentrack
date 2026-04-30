@@ -259,53 +259,68 @@ function validateDates(paymentDf) {
 function matchData(paymentDf, debitDf, partyEmails) {
   console.log(`🔍 STARTING MATCHING: ${paymentDf.length} Payments, ${debitDf.length} Debits, ${partyEmails.length} Registry Entries`);
   
-  // Build lookup maps (exactly like Python email_map)
-  const emailMap = {};
+  // Build lookup maps (Dual-key matching: Name and Code)
+  const nameMap = {};
+  const codeMap = {};
   for (const e of partyEmails) {
-    const name = String(e.partyName || '').trim();
-    if (!name) continue;
-    const key = normalizeName(name);
-    emailMap[key] = {
+    const data = {
       to: String(e.email || '').split(',').map(s => s.trim()).filter(Boolean),
       cc: String(e.cc || '').split(',').map(s => s.trim()).filter(Boolean),
-      displayName: name,
-      partyCode: e.partyCode
+      displayName: e.partyName,
+      partyCode: e.partyCode,
+      partyName: e.partyName
     };
+    const nKey = normalizeName(e.partyName);
+    const cKey = normalizeName(e.partyCode);
+    if (nKey) nameMap[nKey] = data;
+    if (cKey) codeMap[cKey] = data;
   }
 
   const result = [];
   const skipLogLines = [];
   const partiesWithoutEmail = [];
 
-  // Identify parties in payment sheet that have no email (Python logic)
+  // Group unique parties from payment sheet
   const paymentParties = [...new Set(paymentDf.map(r => String(r['Party Name'] || '').trim()))];
+  
   for (const partyNameVal of paymentParties) {
-    const key = normalizeName(partyNameVal);
-    const emailData = emailMap[key];
+    const nKey = normalizeName(partyNameVal);
+    const cKey = normalizeName(deriveCode(partyNameVal)); // Extract "101" from "101-Name"
+    
+    // Try matching by Name first, then by extracted Code
+    const emailData = nameMap[nKey] || codeMap[cKey] || codeMap[nKey];
+
     if (!emailData || !emailData.to.length) {
-      const pRows = paymentDf.filter(r => normalizeName(r['Party Name']) === key);
+      const pRows = paymentDf.filter(r => {
+        const rowNKey = normalizeName(r['Party Name']);
+        const rowCKey = normalizeName(deriveCode(r['Party Name']));
+        return rowNKey === nKey || rowCKey === cKey;
+      });
+
       partiesWithoutEmail.push({
-        partyCode: partyNameVal,
+        partyCode: cKey || partyNameVal,
         partyName: partyNameVal,
         paymentCount: pRows.length
       });
+      continue;
     }
-  }
 
-  // Main matching loop (exactly like Python)
-  for (const [nameKey, emailData] of Object.entries(emailMap)) {
     const partyName = emailData.displayName;
     const partyCode = emailData.partyCode || partyName;
 
     // Filter payments for this party
-    const partyPayments = paymentDf.filter(r => normalizeName(r['Party Name']) === nameKey);
-    if (!partyPayments.length) {
-      skipLogLines.push(`SKIPPED: ${partyName} — No payment rows found in Payment Sheet`);
-      continue;
-    }
+    const partyPayments = paymentDf.filter(r => {
+      const rowNKey = normalizeName(r['Party Name']);
+      const rowCKey = normalizeName(deriveCode(r['Party Name']));
+      return rowNKey === nKey || rowCKey === cKey;
+    });
 
     // Filter debits for this party
-    const relatedDebits = debitDf.filter(r => normalizeName(r['Party Name']) === nameKey);
+    const relatedDebits = debitDf.filter(r => {
+      const rowNKey = normalizeName(r['Party Name']);
+      const rowCKey = normalizeName(deriveCode(r['Party Name']));
+      return rowNKey === nKey || rowCKey === cKey;
+    });
     
     // Only compare positive debit notes against payment debit amounts (exactly like Python)
     const totalDebitAmount = relatedDebits
@@ -321,7 +336,7 @@ function matchData(paymentDf, debitDf, partyEmails) {
       continue;
     }
 
-    console.log(`✅ MATCHED: ${partyName} -> ${emailData.to.join(', ')}`);
+    console.log(`✅ MATCHED: ${partyNameVal} -> ${partyName} [${emailData.to.join(', ')}]`);
     result.push({
       partyCode: partyCode,
       partyName: partyName,
@@ -330,6 +345,16 @@ function matchData(paymentDf, debitDf, partyEmails) {
       payments: partyPayments,
       debits: relatedDebits,
     });
+  }
+
+  // Handle Registry entries that weren't found in this specific Excel (Python parity)
+  const matchedOriginalNames = new Set(result.map(r => normalizeName(r.partyName)));
+  const matchedCodes = new Set(result.map(r => normalizeName(r.partyCode)));
+
+  for (const [key, emailData] of Object.entries(nameMap)) {
+    if (!matchedOriginalNames.has(normalizeName(emailData.partyName)) && !matchedCodes.has(normalizeName(emailData.partyCode))) {
+      skipLogLines.push(`SKIPPED: ${emailData.partyName} — No payment rows found in Payment Sheet`);
+    }
   }
 
   console.log(`🏁 MATCHING COMPLETE: ${result.length} Matched, ${skipLogLines.length} Skipped, ${partiesWithoutEmail.length} Missing Emails`);
