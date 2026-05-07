@@ -35,9 +35,8 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       for (const entry of matchedResults) {
         if (entry.partyCode && entry.emails.length > 0) {
           const [record, created] = await PartyEmail.findOrCreate({
-            where: { partyCode: entry.partyCode },
+            where: { partyCode: entry.partyCode, partyName: entry.partyName },
             defaults: {
-              partyName: entry.partyName,
               email: entry.emails[0],
             },
             transaction
@@ -45,7 +44,6 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
           
           if (!created) {
             await record.update({
-              partyName: entry.partyName,
               email: entry.emails[0],
             }, { transaction });
           }

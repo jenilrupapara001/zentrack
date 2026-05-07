@@ -273,7 +273,10 @@ function matchData(paymentDf, debitDf, partyEmails) {
     const nKey = normalizeName(e.partyName);
     const cKey = normalizeName(e.partyCode);
     if (nKey) nameMap[nKey] = data;
-    if (cKey) codeMap[cKey] = data;
+    if (cKey) {
+      if (!codeMap[cKey]) codeMap[cKey] = [];
+      codeMap[cKey].push(data);
+    }
   }
 
   const result = [];
@@ -287,8 +290,27 @@ function matchData(paymentDf, debitDf, partyEmails) {
     const nKey = normalizeName(partyNameVal);
     const cKey = normalizeName(deriveCode(partyNameVal)); // Extract "101" from "101-Name"
     
-    // Try matching by Name first, then by extracted Code
-    const emailData = nameMap[nKey] || codeMap[cKey] || codeMap[nKey];
+    // Try matching by Name first
+    let emailData = nameMap[nKey];
+
+    // If not matched by exact name, try matching by Code with candidate resolution
+    if (!emailData && cKey && codeMap[cKey]) {
+      const candidates = codeMap[cKey];
+      if (candidates.length === 1) {
+        emailData = candidates[0];
+      } else {
+        // Find candidate whose name is closest to the payment party name
+        emailData = candidates.find(cand => {
+          const candNKey = normalizeName(cand.partyName);
+          return candNKey.includes(nKey) || nKey.includes(candNKey);
+        }) || candidates[0];
+      }
+    }
+
+    if (!emailData && nKey && codeMap[nKey]) {
+      const candidates = codeMap[nKey];
+      emailData = candidates[0];
+    }
 
     if (!emailData || !emailData.to.length) {
       const pRows = paymentDf.filter(r => {
@@ -305,8 +327,8 @@ function matchData(paymentDf, debitDf, partyEmails) {
       continue;
     }
 
-    const partyName = emailData.displayName;
-    const partyCode = emailData.partyCode || partyName;
+    const partyName = partyNameVal;
+    const partyCode = deriveCode(partyNameVal) || partyNameVal;
 
     // Filter payments for this party
     const partyPayments = paymentDf.filter(r => {

@@ -48,15 +48,17 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
         missingEmails.push(`${partyName} (${partyCode})`);
       }
 
-      // Sequelize upsert works by checking the primary key or a unique index.
-      // Since partyName is not a primary key, we should either find and update or ensure it has a unique index.
-      // In our model, we added an index but not a UNIQUE index. Let's assume partyName should be unique for upsert.
-      
-      // Use the stored procedure for high-performance upsert
-      await sequelize.query('EXEC sp_UpsertPartyEmail @PartyCode = :partyCode, @PartyName = :partyName, @Email = :email, @CC = :cc', {
-        replacements: { partyCode, partyName, email, cc },
+      // Check if a record exists with BOTH partyCode and partyName
+      const existing = await PartyEmail.findOne({
+        where: { partyCode, partyName },
         transaction
       });
+
+      if (existing) {
+        await existing.update({ email, cc }, { transaction });
+      } else {
+        await PartyEmail.create({ partyCode, partyName, email, cc }, { transaction });
+      }
     }
 
     await transaction.commit();

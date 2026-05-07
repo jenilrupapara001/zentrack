@@ -65,11 +65,11 @@ CREATE OR ALTER PROCEDURE sp_UpsertPartyEmail
 AS
 BEGIN
     SET NOCOUNT ON;
-    IF EXISTS (SELECT 1 FROM PartyEmails WHERE partyCode = @PartyCode)
+    IF EXISTS (SELECT 1 FROM PartyEmails WHERE partyCode = @PartyCode AND partyName = @PartyName)
     BEGIN
         UPDATE PartyEmails 
-        SET partyName = @PartyName, email = @Email, cc = @CC, updatedAt = GETDATE()
-        WHERE partyCode = @PartyCode;
+        SET email = @Email, cc = @CC, updatedAt = GETDATE()
+        WHERE partyCode = @PartyCode AND partyName = @PartyName;
     END
     ELSE
     BEGIN
