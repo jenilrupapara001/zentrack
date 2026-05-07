@@ -101,9 +101,9 @@ router.post('/send', requireAuth, async (req, res) => {
     const results = [];
 
     for (const entry of matchedResults) {
-      const partyCode = entry.partyCode;
-      const partyEmailRecord = partyEmails.find(e => e.partyName === partyCode || e.partyCode === partyCode);
-      const partyName = partyEmailRecord?.partyName || entry.partyName || partyCode || 'Unknown Party';
+      const partyName = entry.partyName || entry.partyCode || 'Unknown Party';
+      const partyEmailRecord = partyEmails.find(e => e.partyName === partyName);
+      const partyCode = entry.partyCode || partyEmailRecord?.partyCode || partyName;
       
       let ccEmails = [];
       if (entry.ccEmails && Array.isArray(entry.ccEmails)) {
@@ -112,7 +112,7 @@ router.post('/send', requireAuth, async (req, res) => {
         ccEmails = partyEmailRecord.cc.split(',').map(e => e.trim()).filter(Boolean);
       }
 
-      const htmlBody = generateEmailBody(partyCode, entry.payments, entry.debits, partyEmails);
+      const htmlBody = generateEmailBody(partyName, entry.payments, entry.debits, partyEmails);
 
       try {
         const result = await gmailSender.sendMail({
@@ -332,9 +332,9 @@ router.post('/retry', requireAuth, async (req, res) => {
     const results = [];
 
     for (const log of failedLogs) {
-      const partyCode = log.partyCode;
-      const partyEmailRecord = partyEmails.find(e => e.partyCode === partyCode || e.partyName === partyCode);
-      const partyName = partyEmailRecord?.partyName || log.partyName || partyCode || 'Unknown Party';
+      const partyName = log.partyName || log.partyCode || 'Unknown Party';
+      const partyEmailRecord = partyEmails.find(e => e.partyName === partyName);
+      const partyCode = log.partyCode || partyEmailRecord?.partyCode || partyName;
 
       const freshToEmails = partyEmailRecord?.email ? partyEmailRecord.email.split(',').map(e => e.trim()).filter(Boolean) : (log.emails || []);
       const freshCcEmails = partyEmailRecord?.cc ? partyEmailRecord.cc.split(',').map(e => e.trim()).filter(Boolean) : (log.cc || []);
@@ -345,7 +345,7 @@ router.post('/retry', requireAuth, async (req, res) => {
       if (payments.length === 0 && partyCode) {
         const session = await ReconciliationSession.findOne({ order: [['createdAt', 'DESC']] });
         if (session && session.matchedResults) {
-          const partyData = session.matchedResults.find(m => m.partyCode === partyCode || m.partyName === partyCode);
+          const partyData = session.matchedResults.find(m => m.partyName === partyName || m.partyCode === partyCode);
           if (partyData) {
             payments = partyData.payments || [];
             debits = partyData.debits || [];
@@ -353,7 +353,7 @@ router.post('/retry', requireAuth, async (req, res) => {
         }
       }
 
-      const htmlBody = generateEmailBody(partyCode, payments, debits, partyEmails);
+      const htmlBody = generateEmailBody(partyName, payments, debits, partyEmails);
 
       try {
         const result = await gmailSender.sendMail({
