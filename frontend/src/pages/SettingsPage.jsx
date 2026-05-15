@@ -1,35 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import toast from 'react-hot-toast';
 import { 
-  Settings, 
-  Lock, 
-  Server, 
-  Mail, 
-  Database, 
-  ShieldCheck, 
-  Save, 
-  Activity,
-  ChevronRight,
-  RefreshCcw,
-  Clock,
-  HardDrive,
-  Trash2,
-  Plus,
-  Users,
-  Eye,
-  EyeOff,
-  Globe
-} from 'lucide-react';
-import { cn } from '../lib/utils';
+  Layout, 
+  Card, 
+  Tabs, 
+  Form, 
+  Input, 
+  Button, 
+  Slider, 
+  Typography, 
+  Space, 
+  Row, 
+  Col, 
+  Alert, 
+  Progress, 
+  Statistic, 
+  Divider,
+  Badge,
+  App as AntdApp 
+} from 'antd';
+import {
+  SafetyCertificateOutlined,
+  ThunderboltOutlined,
+  CloudServerOutlined,
+  UserOutlined,
+  LockOutlined,
+  GoogleOutlined,
+  DeleteOutlined,
+  SaveOutlined,
+  DatabaseOutlined,
+  GlobalOutlined,
+  DashboardOutlined
+} from '@ant-design/icons';
 import api from '../services/api';
 
+const { Title, Text } = Typography;
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('Account');
   const [gmailStatus, setGmailStatus] = useState({ connected: false, email: null });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [delay, setDelay] = useState(3);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const { message, modal } = AntdApp.useApp();
+
+  useEffect(() => {
+    fetchGmailStatus();
+  }, []);
 
   const fetchGmailStatus = async () => {
     try {
@@ -40,266 +54,203 @@ export default function SettingsPage() {
     }
   };
 
-
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await fetchGmailStatus();
-      setLoading(false);
-    };
-    init();
-  }, [refreshKey]);
-
   const handleDisconnectGmail = async () => {
-    if (!window.confirm('Are you sure you want to disconnect your Gmail account?')) return;
-    try {
-      const res = await api.delete('/settings/gmail');
-      if (res.data.success) {
-        toast.success('Gmail Disconnected');
-        fetchGmailStatus();
+    modal.confirm({
+      title: 'Disconnect Gmail',
+      content: 'Are you sure you want to disconnect your Gmail account?',
+      okText: 'Disconnect',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          const res = await api.delete('/settings/gmail');
+          if (res.data.success) {
+            message.success('Gmail Disconnected');
+            fetchGmailStatus();
+          }
+        } catch (err) {
+          message.error('Failed to disconnect Gmail');
+        }
       }
-    } catch (err) {
-      toast.error('Failed to disconnect Gmail');
-    }
+    });
   };
 
+  const items = [
+    {
+      key: 'security',
+      label: <span><SafetyCertificateOutlined /> Security</span>,
+      children: (
+        <Card title="Authentication Settings" variant="borderless">
+          <Form layout="vertical">
+            <Row gutter={24}>
+              <Col span={12}>
+                <Form.Item label="Admin Password" extra="Used for core settings changes.">
+                  <Input.Password placeholder="Enter new password" prefix={<LockOutlined />} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="File Upload Password" extra="Required when uploading payment sheets.">
+                  <Input.Password placeholder="Enter upload password" prefix={<LockOutlined />} />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Button type="primary" icon={<SaveOutlined />}>Save Security Policy</Button>
+          </Form>
+          <Divider />
+            <Alert
+              title="Security Tip"
+              description="Rotate your passwords every 90 days to maintain high security standards."
+              type="info"
+              showIcon
+            />
+        </Card>
+      ),
+    },
+    {
+      key: 'automation',
+      label: <span><ThunderboltOutlined /> Automation</span>,
+      children: (
+        <Card title="Sending Configuration" variant="borderless">
+          <Space direction="vertical" style={{ width: '100%' }} size="large">
+            <div>
+              <Text strong>Delay Between Emails</Text>
+              <Slider 
+                min={1} 
+                max={5} 
+                value={delay} 
+                onChange={setDelay} 
+                marks={{ 1: '1s', 3: '3s', 5: '5s' }}
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Adding a delay prevents your email from being flagged as spam. Recommended: 3s.
+              </Text>
+            </div>
+            <Button type="primary" icon={<SaveOutlined />}>Save Automation Settings</Button>
+          </Space>
+        </Card>
+      ),
+    },
+    {
+      key: 'infrastructure',
+      label: <span><CloudServerOutlined /> Infrastructure</span>,
+      children: (
+        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          <Row gutter={24}>
+            <Col span={12}>
+              <Card variant="borderless">
+                <Statistic 
+                  title="Database System" 
+                  value="SQL Server" 
+                  prefix={<DatabaseOutlined style={{ color: '#1677ff' }} />} 
+                />
+                <div style={{ marginTop: 8 }}>
+                  <Badge status="processing" text="ZenTrackDB • Connected" />
+                </div>
+              </Card>
+            </Col>
+            <Col span={12}>
+              <Card variant="borderless">
+                <Statistic 
+                  title="API Runtime" 
+                  value="Node.js 18" 
+                  prefix={<GlobalOutlined style={{ color: '#52c41a' }} />} 
+                />
+                <div style={{ marginTop: 8 }}>
+                  <Badge status="processing" text="Running on Port 5001" />
+                </div>
+              </Card>
+            </Col>
+          </Row>
+          <Card title="System Health" variant="borderless">
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text type="secondary">Memory Usage</Text>
+                  <Text strong>312MB / 1024MB</Text>
+                </div>
+                <Progress percent={31} showInfo={false} strokeColor="#1677ff" />
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text type="secondary">Database Storage</Text>
+                  <Text strong>0.8GB / 5GB</Text>
+                </div>
+                <Progress percent={16} showInfo={false} strokeColor="#52c41a" />
+              </div>
+            </Space>
+          </Card>
+        </Space>
+      ),
+    },
+    {
+      key: 'account',
+      label: <span><UserOutlined /> Account</span>,
+      children: (
+        <Card title="Gmail Integration" variant="borderless">
+          <Space direction="vertical" style={{ width: '100%' }} size="large">
+            <div style={{ padding: 24, background: gmailStatus.connected ? '#f6ffed' : '#f0f5ff', borderRadius: 8, border: `1px solid ${gmailStatus.connected ? '#b7eb8f' : '#adc6ff'}` }}>
+              <Row align="middle" justify="space-between">
+                <Col>
+                  <Space align="start" size="middle">
+                    <div style={{ padding: 8, background: '#fff', borderRadius: 8, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                      <GoogleOutlined style={{ fontSize: 24, color: gmailStatus.connected ? '#52c41a' : '#1677ff' }} />
+                    </div>
+                    <div>
+                      <Text strong style={{ fontSize: 16, display: 'block' }}>Google Cloud (Gmail API)</Text>
+                      {gmailStatus.connected ? (
+                        <Space>
+                          <Text type="success" strong>{gmailStatus.email}</Text>
+                          <Badge status="processing" />
+                        </Space>
+                      ) : (
+                        <Text type="secondary">Connect your Gmail to send reconciliation emails.</Text>
+                      )}
+                    </div>
+                  </Space>
+                </Col>
+                <Col>
+                  {gmailStatus.connected ? (
+                    <Button danger icon={<DeleteOutlined />} onClick={handleDisconnectGmail}>Disconnect</Button>
+                  ) : (
+                    <Button 
+                      type="primary" 
+                      icon={<GoogleOutlined />} 
+                      href={`${window.location.origin.includes('localhost') ? 'http://localhost:5001' : ''}/api/auth/google`}
+                      target="_blank"
+                    >
+                      Connect Gmail
+                    </Button>
+                  )}
+                </Col>
+              </Row>
+            </div>
+            <Alert
+              title="Why use Gmail API?"
+              description="Integrating with the Gmail API provides the best deliverability and security for your outgoing statements compared to standard SMTP."
+              type="info"
+              showIcon
+            />
+          </Space>
+        </Card>
+      ),
+    }
+  ];
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex justify-between items-end">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">System Configuration</h1>
-          <p className="text-slate-500 text-sm mt-1">Manage global security protocols, SMTP throttling, and infrastructure health.</p>
-        </div>
-        <button className="btn-primary flex items-center gap-2 px-6">
-          <Save size={18} />
-          Sync All Changes
-        </button>
-      </div>
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Row justify="space-between" align="bottom">
+        <Col>
+          <Title level={2} style={{ margin: 0 }}>Settings</Title>
+          <Text type="secondary">Manage your application configuration and integrations.</Text>
+        </Col>
+      </Row>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Navigation Sidebar */}
-        <div className="lg:col-span-3 space-y-2">
-          {['Security', 'Automation', 'Infrastructure', 'Account'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "w-full text-left px-4 py-2.5 rounded-xl text-sm font-bold transition-all",
-                activeTab === tab 
-                  ? "bg-white text-slate-900 border border-slate-200 shadow-sm" 
-                  : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
-              )}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>        {/* Content Area */}
-        <div className="lg:col-span-9 space-y-6">
-          {activeTab === 'Security' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="card">
-                <div className="p-6 border-b border-slate-100 flex items-center gap-3">
-                  <Lock className="text-primary-600" size={20} />
-                  <h3 className="font-bold text-slate-800">Authentication Policy</h3>
-                </div>
-                <div className="p-6 space-y-6">
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Master Admin Passphrase</label>
-                        <input 
-                          type="password"
-                          placeholder="••••••••••••"
-                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary-500 focus:ring-4 focus:ring-primary-100 rounded-xl text-sm transition-all outline-none"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Upload Clearance Password</label>
-                        <input 
-                          type="password"
-                          placeholder="••••••••••••"
-                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary-500 focus:ring-4 focus:ring-primary-100 rounded-xl text-sm transition-all outline-none"
-                        />
-                      </div>
-                   </div>
-                   <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 flex gap-3">
-                      <ShieldCheck className="text-amber-600 shrink-0" size={20} />
-                      <p className="text-xs text-amber-700 font-medium leading-relaxed">
-                        Security keys are required for all broad-registry updates and SMTP transmissions. Rotate passwords every 90 days for optimal compliance.
-                      </p>
-                   </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'Automation' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="card">
-                <div className="p-6 border-b border-slate-100 flex items-center gap-3">
-                  <Clock className="text-primary-600" size={20} />
-                  <h3 className="font-bold text-slate-800">SMTP Throttling Logic</h3>
-                </div>
-                <div className="p-6">
-                   <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                         <label className="text-sm font-bold text-slate-700">Minimum Broadcast Delay</label>
-                         <span className="text-sm font-bold text-primary-600 tabular-nums px-3 py-1 bg-primary-50 rounded-lg">{delay}s</span>
-                      </div>
-                      <input 
-                        type="range"
-                        min="1"
-                        max="5"
-                        step="1"
-                        value={delay}
-                        onChange={(e) => setDelay(e.target.value)}
-                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                      />
-                      <p className="text-[11px] text-slate-500 italic font-medium">Throttling prevents mail servers from flagging automated traffic as spam. Recommended: 3s</p>
-                   </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'Infrastructure' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="card p-6 flex items-center gap-6">
-                    <div className="p-4 bg-green-50 text-green-600 rounded-2xl border border-green-100 shadow-sm">
-                       <Database size={32} />
-                    </div>
-                    <div>
-                       <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Database Cluster</div>
-                       <div className="text-lg font-black text-slate-900 leading-none mb-1">MongoDB Cloud</div>
-                       <div className="flex items-center gap-1.5 mt-2">
-                          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                          <span className="text-[10px] font-black text-green-700 uppercase tracking-tight">V4.2 • Verified State</span>
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="card p-6 flex items-center gap-6">
-                    <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 shadow-sm">
-                       <Server size={32} />
-                    </div>
-                    <div>
-                       <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Backend Runtime</div>
-                       <div className="text-lg font-black text-slate-900 leading-none mb-1">Node.js Node-18</div>
-                       <div className="flex items-center gap-1.5 mt-2">
-                          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                          <span className="text-[10px] font-black text-blue-700 uppercase tracking-tight">Active • VPC-East-1</span>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-
-              <div className="card">
-                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                       <Activity size={18} className="text-primary-600" />
-                       Real-time Health Metrics
-                    </h3>
-                    <button className="text-[10px] font-black text-slate-400 flex items-center gap-1 hover:text-primary-600 uppercase tracking-widest transition-colors">
-                       <RefreshCcw size={12} /> Force Diagnostic
-                    </button>
-                 </div>
-                 <div className="p-6 space-y-6">
-                    <div className="space-y-4">
-                       <div className="flex justify-between items-end">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Memory Allocation</span>
-                          <span className="text-xs font-black text-slate-900 tabular-nums">312MB / 1024MB</span>
-                       </div>
-                       <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-primary-600 rounded-full shadow-sm" style={{ width: '31%' }} />
-                       </div>
-                    </div>
-                    <div className="space-y-4">
-                       <div className="flex justify-between items-end">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Storage Cluster Load</span>
-                          <span className="text-xs font-black text-slate-900 tabular-nums">0.8GB / 2GB</span>
-                       </div>
-                       <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-green-500 rounded-full shadow-sm" style={{ width: '40%' }} />
-                       </div>
-                    </div>
-                 </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'Account' && (
-             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-               <div className="card">
-                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <div>
-                       <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                        <Globe size={18} className="text-primary-600" />
-                        Google Cloud Infrastructure
-                       </h3>
-                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">High-priority Enterprise Gmail API Connection</p>
-                    </div>
-                  </div>
-
-                  <div className="p-6 space-y-4">
-                    {/* Google OAuth Section */}
-                    <div className={cn(
-                      "p-6 rounded-2xl space-y-4 mb-6 transition-all",
-                      gmailStatus.connected ? "bg-green-50/50 border border-green-100" : "bg-blue-50/50 border border-blue-100"
-                    )}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className={cn(
-                            "p-2.5 bg-white border rounded-lg shadow-sm",
-                            gmailStatus.connected ? "text-green-600 border-green-100" : "text-blue-600 border-blue-100"
-                          )}>
-                            <Globe size={20} />
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-slate-900">Google Cloud (Gmail API)</div>
-                            {gmailStatus.connected ? (
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className="text-[10px] text-green-600 font-black uppercase tracking-widest">{gmailStatus.email}</span>
-                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                              </div>
-                            ) : (
-                              <div className="text-[10px] text-blue-500 font-bold uppercase tracking-widest">Enterprise-grade secure connection</div>
-                            )}
-                          </div>
-                        </div>
-                        
-                        {gmailStatus.connected ? (
-                          <button 
-                            onClick={handleDisconnectGmail}
-                            className="px-4 py-2 text-xs font-bold text-red-600 bg-white border border-red-100 hover:bg-red-50 rounded-xl shadow-sm transition-all flex items-center gap-2"
-                          >
-                            <Trash2 size={14} />
-                            Disconnect Account
-                          </button>
-                        ) : (
-                          <a 
-                            href={`${window.location.origin.includes('localhost') ? 'http://localhost:5001' : ''}/api/auth/google`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn-primary bg-blue-600 hover:bg-blue-700 border-none shadow-md shadow-blue-100 flex items-center gap-2 px-6 h-10"
-                          >
-                            <Lock size={16} />
-                            Connect Gmail
-                          </a>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-500 leading-relaxed">
-                        {gmailStatus.connected 
-                          ? "ZenTrack is currently using this Gmail account for high-priority dispatch. All reconciliations will be routed through the Gmail API."
-                          : "Using the Gmail API is recommended for high-priority volumes. It provides better deliverability and more robust encryption than standard SMTP."}
-                      </p>
-                    </div>
-                    </div>
-                </div>
-              </div>
-           )}
-        </div>
-      </div>
-    </div>
+      <Tabs 
+        defaultActiveKey="account" 
+        items={items} 
+        type="card" 
+        size="large"
+        style={{ marginTop: 16 }}
+      />
+    </Space>
   );
 }

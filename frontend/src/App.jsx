@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import MainLayout from './components/layout/MainLayout';
 import DashboardHome from './pages/DashboardHome';
@@ -10,27 +9,18 @@ import EmailSender from './pages/EmailSender';
 import LogsReporting from './pages/LogsReporting';
 import SettingsPage from './pages/SettingsPage';
 import { getAuthStatus } from './services/api';
-import { CustomToastContainer } from './components/CustomToast';
-import { Toaster } from 'react-hot-toast';
-
 import { RefreshProvider } from './context/RefreshContext';
+import { App as AntdApp, ConfigProvider, Spin } from 'antd';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [checking, setChecking] = useState(true);
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const authPromise = getAuthStatus();
-        const timeoutPromise = new Promise((resolve) =>
-          setTimeout(() => resolve({ data: { authenticated: false, isTimeout: true } }), 10000)
-        );
-
-        const res = await Promise.race([authPromise, timeoutPromise]);
+        const res = await getAuthStatus();
         setAuthenticated(res.data.authenticated);
-        if (res.data.isTimeout) {
-          console.warn('📶 Auth check timed out. Defaulting to unauthenticated for performance.');
-        }
       } catch (err) {
         console.error('🛡️ Auth check failed:', err);
         setAuthenticated(false);
@@ -45,52 +35,51 @@ export default function App() {
     setAuthenticated(false);
   };
 
-  const LoadingScreen = () => (
-    <div className="h-screen w-full flex items-center justify-center bg-zen-flow">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-12 h-12 border-4 border-slate-200 border-t-primary-600 rounded-full animate-spin shadow-xl shadow-primary-100" />
-        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest animate-pulse">
-          Establishing ZenTrack Bridge...
-        </span>
+  if (checking) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
+        <Spin size="large" description="Initializing ZenTrack..." />
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <RefreshProvider>
-      <BrowserRouter>
-        <CustomToastContainer />
-        <Toaster position="top-right" reverseOrder={false} />
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#1677ff',
+          borderRadius: 8,
+        },
+      }}
+    >
+      <AntdApp>
+        <RefreshProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Root Redirect */}
+              <Route path="/" element={<Navigate to={authenticated ? "/dashboard" : "/login"} replace />} />
 
-        <Routes>
-          {/* Public Routes - Accessible Immediately */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={
-            authenticated ? <Navigate to="/dashboard" replace /> : <LoginPage onLogin={() => setAuthenticated(true)} />
-          } />
+              {/* Public Routes */}
+              <Route path="/login" element={
+                authenticated ? <Navigate to="/dashboard" replace /> : <LoginPage onLogin={() => setAuthenticated(true)} />
+              } />
 
-          {/* Auth-Dependent Routes */}
-          <Route path="*" element={
-            checking ? (
-              <LoadingScreen />
-            ) : !authenticated ? (
-              <Navigate to="/" replace />
-            ) : (
-              <Routes>
-                <Route element={<MainLayout onLogout={handleLogout} />}>
-                  <Route path="/dashboard" element={<DashboardHome />} />
-                  <Route path="/reconciliation" element={<ReconciliationView />} />
-                  <Route path="/parties" element={<PartyManagement />} />
-                  <Route path="/sender" element={<EmailSender />} />
-                  <Route path="/logs" element={<LogsReporting />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                </Route>
-              </Routes>
-            )
-          } />
-        </Routes>
-      </BrowserRouter>
-    </RefreshProvider>
+              {/* Protected Dashboard Routes */}
+              <Route element={authenticated ? <MainLayout onLogout={handleLogout} /> : <Navigate to="/login" replace />}>
+                <Route path="/dashboard" element={<DashboardHome />} />
+                <Route path="/reconciliation" element={<ReconciliationView />} />
+                <Route path="/parties" element={<PartyManagement />} />
+                <Route path="/sender" element={<EmailSender />} />
+                <Route path="/logs" element={<LogsReporting />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Route>
+
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to={authenticated ? "/dashboard" : "/login"} replace />} />
+            </Routes>
+          </BrowserRouter>
+        </RefreshProvider>
+      </AntdApp>
+    </ConfigProvider>
   );
 }

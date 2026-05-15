@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@ant-design/icons": "^6.2.3",
+    "antd": "^6.4.2",
     "axios": "^1.6.2",
     "clsx": "^2.1.1",
     "lucide-react": "^0.294.0",
