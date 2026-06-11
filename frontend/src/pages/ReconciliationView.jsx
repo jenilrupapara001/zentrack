@@ -18,7 +18,8 @@ import {
   Spin, 
   App as AntdApp,
   Collapse,
-  List
+  List,
+  Tag
 } from 'antd';
 import {
   InboxOutlined,
